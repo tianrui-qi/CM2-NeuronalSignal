@@ -5,38 +5,25 @@ import csv
 import json
 import logging
 import os
-import re
-from collections.abc import Sequence
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+import h5py
 import numpy as np
 import tifffile
-import yaml
-import h5py
 from PIL import Image
-from caiman.source_extraction.cnmf.cnmf import load_CNMF
-from scipy import ndimage as ndi
 from tqdm import tqdm
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SAVE_SCHEMA_PATH = REPO_ROOT / "config" / "schema" / "save.yaml"
-
 TRACE_SOURCE_FILES = {
     "c": "traces_c.float32.bin",
+    "yra": "traces_yra.float32.bin",
     "c_plus_yra": "traces_c_plus_yra.float32.bin",
 }
-POINTS_FILE_NAME = "points.json"
-METADATA_FILE_NAME = "metadata.json"
-BACKGROUND_DIRNAME = "backgrounds"
-
-PATCH_NAME_RE = re.compile(r"^(\d+)-(\d+)-(\d+)-(\d+)$")
-
-QUALITY_PROFILE_KEYS = (
-    "r_value",
+PROFILE_METRIC_KEYS = (
     "snr",
+    "r_value",
     "bl",
     "lam",
     "neurons_sn",
@@ -44,389 +31,178 @@ QUALITY_PROFILE_KEYS = (
     "g_1",
     "t_peak",
     "t_half",
-    "r_value_unreliable_joint_only",
 )
-
-
-@dataclass
-class PatchMeta:
-    patch_name: str
-    qrow: int
-    qcol: int
-    prow: int
-    pcol: int
-    h: int
-    w: int
-    model_path: Path
-    y0: int = 0
-    y1: int = 0
-    x0: int = 0
-    x1: int = 0
-    core_h: int = 0
-    core_w: int = 0
-    core_ly0: int = 0
-    core_ly1: int = 0
-    core_lx0: int = 0
-    core_lx1: int = 0
-
-
-@dataclass(frozen=True)
-class CropPatchSpec:
-    name: str
-    quadrant_row: int
-    quadrant_col: int
-    patch_row: int
-    patch_col: int
-    y0: int
-    y1: int
-    x0: int
-    x1: int
-
-
-@dataclass(frozen=True)
-class QcThresholdSpec:
-    key: str
-    scale: str
-    mean: float
-    std: float
-    lower_z: float | None
-    upper_z: float | None
+POINTS_FILE_NAME = "points.json"
+METADATA_FILE_NAME = "metadata.json"
+BACKGROUND_DIRNAME = "backgrounds"
+BACKGROUND_CHUNK_FRAMES = 8
 
 
 @contextmanager
-def silence_stdio():
+def _silence_stdio():
     with open(os.devnull, "w", encoding="utf-8") as devnull:
         with redirect_stdout(devnull), redirect_stderr(devnull):
             yield
 
 
-def _load_crop_params(crop_load_fold: Path) -> dict[str, object]:
-    crop_load_fold = Path(crop_load_fold)
-    if not crop_load_fold.is_dir():
-        raise NotADirectoryError(
-            f"crop_load_fold must be a crop folder containing para.json: {crop_load_fold}"
-        )
-    para_path = crop_load_fold / "para.json"
-    if not para_path.is_file():
-        raise FileNotFoundError(f"Crop para.json not found: {para_path}")
-    payload = json.loads(para_path.read_text(encoding="utf-8"))
-    patch_specs_raw = payload.get("patch_specs")
-    if not isinstance(patch_specs_raw, list) or not patch_specs_raw:
-        raise ValueError(f"Invalid crop para.json patch_specs: {para_path}")
-    patch_specs = [
-        CropPatchSpec(
-            name=str(spec["name"]),
-            quadrant_row=int(spec["quadrant_row"]),
-            quadrant_col=int(spec["quadrant_col"]),
-            patch_row=int(spec["patch_row"]),
-            patch_col=int(spec["patch_col"]),
-            y0=int(spec["y0"]),
-            y1=int(spec["y1"]),
-            x0=int(spec["x0"]),
-            x1=int(spec["x1"]),
-        )
-        for spec in patch_specs_raw
-    ]
-    payload["patch_specs"] = patch_specs
-    return payload
+def _is_file(path: Path) -> bool:
+    return path.is_file() and path.stat().st_size > 0
 
 
-def _parse_patch_name(stem: str) -> tuple[int, int, int, int]:
-    match = PATCH_NAME_RE.match(stem)
-    if match is None:
+def _source_signature(path: Path) -> dict[str, object]:
+    stat = path.stat()
+    return {
+        "path": str(path.resolve()),
+        "mtime_ns": int(stat.st_mtime_ns),
+        "size": int(stat.st_size),
+    }
+
+
+def _read_model_dims(model_path: Path, cnm: Any) -> tuple[int, int]:
+    dims = getattr(cnm.estimates, "dims", None)
+    if dims is None:
+        dims = cnm.params.data.get("dims")
+    if dims is None:
+        with h5py.File(model_path, "r") as handle:
+            if "dims" in handle:
+                dims = handle["dims"][()]
+            elif "params" in handle and "data" in handle["params"] and "dims" in handle["params"]["data"]:
+                dims = handle["params"]["data"]["dims"][()]
+    if dims is None:
+        raise ValueError(f"Cannot infer model dimensions from {model_path}")
+    dims_tuple = tuple(int(x) for x in np.asarray(dims).reshape(-1).tolist())
+    if len(dims_tuple) < 2:
+        raise ValueError(f"Expected 2D model dimensions, got {dims_tuple}")
+    return int(dims_tuple[0]), int(dims_tuple[1])
+
+
+def _frame_rate_hz(cnm: Any) -> float:
+    for getter in (
+        lambda: cnm.params.get("data", "fr"),
+        lambda: cnm.params.data.get("fr"),
+    ):
+        try:
+            value = getter()
+            if value is not None:
+                return float(value)
+        except Exception:
+            pass
+    return 1.0
+
+
+def _read_profile(profile_load_path: Path, n_components: int) -> tuple[list[dict[str, str]], tuple[str, ...]]:
+    rows_by_index: dict[int, dict[str, str]] = {}
+    with profile_load_path.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise ValueError(f"Profile CSV has no header: {profile_load_path}")
+        fieldnames = tuple(reader.fieldnames)
+        if "component_index" not in fieldnames:
+            raise ValueError(f"Profile CSV is missing component_index: {profile_load_path}")
+        missing_fields = sorted(set(PROFILE_METRIC_KEYS) - set(fieldnames))
+        if missing_fields:
+            raise ValueError(f"Profile CSV is missing fields {missing_fields}: {profile_load_path}")
+        for row in reader:
+            rows_by_index[int(row["component_index"])] = row
+
+    missing = [idx for idx in range(n_components) if idx not in rows_by_index]
+    if missing:
         raise ValueError(
-            f"Patch name must match '<qrow>-<qcol>-<prow>-<pcol>', got: {stem}"
+            f"Profile/model mismatch: profile is missing {len(missing)} rows; first={missing[:5]}"
         )
-    return tuple(int(x) for x in match.groups())  # type: ignore[return-value]
+    metric_keys = tuple(key for key in PROFILE_METRIC_KEYS if key in fieldnames)
+    return [rows_by_index[idx] for idx in range(n_components)], metric_keys
 
 
-def _model_file_to_patch_name(path: Path) -> str:
-    name = path.name
-    if name.endswith(".tif.hdf5"):
-        return name[: -len(".tif.hdf5")]
-    if name.endswith(".hdf5"):
-        return path.stem
-    raise ValueError(f"Unsupported model filename: {name}")
-
-
-def get_model_dir(extract_load_fold: Path) -> Path:
-    return extract_load_fold / "patch-model"
-
-
-def get_profile_dir(extract_load_fold: Path) -> Path:
-    return extract_load_fold / "patch-profile"
-
-
-def _read_model_patch_dims(model_path: Path) -> tuple[int, int]:
-    with h5py.File(model_path, "r") as handle:
-        dims_value = None
-        if "dims" in handle:
-            dims_value = handle["dims"][()]
-        elif "params" in handle and "data" in handle["params"] and "dims" in handle["params"]["data"]:
-            dims_value = handle["params"]["data"]["dims"][()]
-        if dims_value is None:
-            raise KeyError(f"Missing dims in model file: {model_path}")
-        dims = tuple(int(x) for x in np.asarray(dims_value).reshape(-1).tolist())
-        if len(dims) != 2:
-            raise ValueError(f"Model dims must have length 2, got {dims}: {model_path}")
-        return dims
-
-
-def _collect_patch_meta(model_dir: Path) -> list[PatchMeta]:
-    patches: list[PatchMeta] = []
-    model_files = sorted(model_dir.glob("*.hdf5"), key=lambda p: p.name)
-    if not model_files:
-        raise FileNotFoundError(f"No .hdf5 model files found in: {model_dir}")
-
-    for model_path in model_files:
-        patch_name = _model_file_to_patch_name(model_path)
-        qrow, qcol, prow, pcol = _parse_patch_name(patch_name)
-        h, w = _read_model_patch_dims(model_path)
-        patches.append(
-            PatchMeta(
-                patch_name=patch_name,
-                qrow=qrow,
-                qcol=qcol,
-                prow=prow,
-                pcol=pcol,
-                h=h,
-                w=w,
-                model_path=model_path,
-            )
-        )
-    return patches
-
-
-def _metric_to_qc_space(raw_value: float, scale: str) -> float:
-    value = float(raw_value)
-    if scale == "linear":
-        return value
-    if scale == "log":
-        if np.isfinite(value) and value > 0.0:
-            return float(np.log10(value))
-        return float("-inf")
-    raise ValueError(f"Unsupported QC metric scale: {scale}")
-
-
-def _normalize_qc_bounds(
-    bounds: Sequence[float | None] | None,
-    key: str,
-) -> tuple[float | None, float | None]:
-    if bounds is None:
-        return None, None
-    if isinstance(bounds, (str, bytes)):
-        raise TypeError(
-            f"QC threshold for {key} must be [lower, upper] or null, got string-like value."
-        )
-    bounds_list = list(bounds)
-    if len(bounds_list) != 2:
-        raise ValueError(
-            f"QC threshold for {key} must have exactly two entries: [lower, upper]."
-        )
-
-    def _cast_one(value: float | None) -> float | None:
-        if value is None:
+def _optional_component_vector(value: Any, n_components: int) -> np.ndarray | None:
+    try:
+        arr = np.asarray(value, dtype=np.float64)
+    except (TypeError, ValueError):
+        return None
+    if arr.dtype == object:
+        return None
+    if arr.ndim == 0:
+        if not np.isfinite(float(arr)):
             return None
-        return float(value)
-
-    return _cast_one(bounds_list[0]), _cast_one(bounds_list[1])
-
-
-def _load_qc_threshold_specs(
-    extract_load_fold: Path,
-    t_snr: Sequence[float | None] | None,
-    t_r_value: Sequence[float | None] | None,
-    t_lam: Sequence[float | None] | None,
-    t_neurons_sn: Sequence[float | None] | None,
-) -> tuple[QcThresholdSpec, ...]:
-    requested: dict[str, tuple[float | None, float | None]] = {
-        "snr": _normalize_qc_bounds(t_snr, "snr"),
-        "r_value": _normalize_qc_bounds(t_r_value, "r_value"),
-        "lam": _normalize_qc_bounds(t_lam, "lam"),
-        "neurons_sn": _normalize_qc_bounds(t_neurons_sn, "neurons_sn"),
-    }
-    enabled = {
-        key: value
-        for key, value in requested.items()
-        if value[0] is not None or value[1] is not None
-    }
-    if not enabled:
-        return ()
-
-    stats_path = extract_load_fold / "stats" / "stats.json"
-    legacy_stats_path = extract_load_fold / "stats.json"
-    if not stats_path.is_file() and legacy_stats_path.is_file():
-        stats_path = legacy_stats_path
-    if not stats_path.is_file():
-        raise FileNotFoundError(
-            f"QC thresholds require stats.json, but it was not found: {stats_path}"
-        )
-    payload = json.loads(stats_path.read_text(encoding="utf-8"))
-
-    specs: list[QcThresholdSpec] = []
-    for key, (lower_z, upper_z) in enabled.items():
-        raw_stats = payload.get(key)
-        if not isinstance(raw_stats, dict):
-            raise KeyError(f"Missing QC metric stats for {key}: {stats_path}")
-        scale = str(raw_stats["scale"])
-        mean = float(raw_stats["mean"])
-        std = float(raw_stats["std"])
-        if not np.isfinite(std) or std <= 0.0:
-            raise ValueError(f"Invalid std for QC metric {key} in {stats_path}: {std}")
-        specs.append(
-            QcThresholdSpec(
-                key=key,
-                scale=scale,
-                mean=mean,
-                std=std,
-                lower_z=lower_z,
-                upper_z=upper_z,
-            )
-        )
-    return tuple(specs)
+        return np.full(n_components, float(arr), dtype=np.float64)
+    arr = np.ravel(arr).astype(np.float64, copy=False)
+    if arr.shape[0] != n_components or not np.any(np.isfinite(arr)):
+        return None
+    return arr
 
 
-def _parse_bool_csv(value: str) -> bool:
-    return value.strip().lower() in {"1", "true", "t", "yes", "y"}
+def _movie_tyx_from_tif(y_load_path: Path, h: int, w: int, trace_length: int | None = None) -> np.ndarray:
+    movie = tifffile.memmap(y_load_path)
+    if movie.ndim == 2:
+        raise ValueError(f"Expected a time series movie, got 2D image: {y_load_path}")
+    if movie.ndim != 3:
+        raise ValueError(f"Expected a 3D movie, got shape {movie.shape}: {y_load_path}")
+    if movie.shape[1:] == (h, w) and (trace_length is None or movie.shape[0] == trace_length):
+        return movie
+    if movie.shape[:2] == (h, w) and (trace_length is None or movie.shape[2] == trace_length):
+        return np.moveaxis(movie, 2, 0)
+    raise ValueError(f"Movie shape {movie.shape} does not match model dims {(h, w)}: {y_load_path}")
 
 
-def _read_profile_metrics(profile_path: Path) -> dict[int, dict[str, float | bool]]:
-    rows: dict[int, dict[str, float | bool]] = {}
-    with profile_path.open("r", newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            component_index = int(row["component_index"])
-            metrics: dict[str, float | bool] = {}
-            for key in QUALITY_PROFILE_KEYS:
-                if key == "r_value_unreliable_joint_only":
-                    metrics[key] = _parse_bool_csv(row[key])
-                else:
-                    metrics[key] = float(row[key])
-            rows[component_index] = metrics
-    return rows
-
-
-def _read_patch_qc_keep_mask(
-    profile_path: Path,
+def _profile_from_model(
+    *,
+    cnm: Any,
+    y_load_path: Path,
+    h: int,
+    w: int,
     n_components: int,
-    qc_threshold_specs: Sequence[QcThresholdSpec],
-) -> np.ndarray:
-    if not profile_path.is_file():
-        raise FileNotFoundError(f"Missing profile CSV for web QC: {profile_path}")
-
-    if not qc_threshold_specs:
-        return np.ones(n_components, dtype=bool)
-
-    keep = np.ones(n_components, dtype=bool)
-    seen = 0
-    with profile_path.open("r", newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            component_index = int(row["component_index"])
-            if component_index < 0 or component_index >= n_components:
-                raise ValueError(
-                    f"component_index out of range in {profile_path}: "
-                    f"{component_index} vs n_components={n_components}"
-                )
-            keep_value = True
-            for spec in qc_threshold_specs:
-                metric_space_value = _metric_to_qc_space(
-                    raw_value=float(row[spec.key]),
-                    scale=spec.scale,
-                )
-                z_value = (metric_space_value - spec.mean) / spec.std
-                if spec.lower_z is not None and z_value < spec.lower_z:
-                    keep_value = False
-                    break
-                if spec.upper_z is not None and z_value > spec.upper_z:
-                    keep_value = False
-                    break
-            keep[component_index] = keep_value
-            seen += 1
-    if seen != n_components:
-        raise ValueError(
-            f"Profile/model component mismatch for {profile_path}: "
-            f"csv_rows={seen}, n_components={n_components}"
-        )
-    return keep
-
-
-def _component_core_coordinates_and_weights(spatial, patch: PatchMeta) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    flat_idx = spatial.indices.astype(np.int64, copy=False)
-    weights = spatial.data.astype(np.float32, copy=False)
-    ys_full = flat_idx % patch.h
-    xs_full = flat_idx // patch.h
-    core_mask = (
-        (ys_full >= patch.core_ly0)
-        & (ys_full < patch.core_ly1)
-        & (xs_full >= patch.core_lx0)
-        & (xs_full < patch.core_lx1)
-    )
-    ys_core = ys_full[core_mask] - patch.core_ly0
-    xs_core = xs_full[core_mask] - patch.core_lx0
-    weights_core = weights[core_mask]
-    return (
-        ys_core.astype(np.int32, copy=False),
-        xs_core.astype(np.int32, copy=False),
-        weights_core.astype(np.float32, copy=False),
+    trace_length: int,
+    frame_rate_hz: float,
+) -> tuple[list[dict[str, str]], tuple[str, ...]]:
+    from src.qc import (
+        _component_float_vector,
+        _component_g_matrix,
+        _component_timing_arrays,
+        _evaluate_snr_r_values,
     )
 
+    estimates = cnm.estimates
+    snr = _optional_component_vector(getattr(estimates, "SNR_comp", None), n_components)
+    r_value = _optional_component_vector(getattr(estimates, "r_values", None), n_components)
+    if snr is None or r_value is None:
+        print(f"[app] computing SNR/r_value from movie {y_load_path}")
+        movie_tyx = _movie_tyx_from_tif(y_load_path, h=h, w=w, trace_length=trace_length)
+        snr, r_value = _evaluate_snr_r_values(cnm, movie_tyx)
 
-def _component_outline_coordinates(
-    spatial,
-    patch: PatchMeta,
-    support_threshold_rel: float = 0.2,
-) -> tuple[np.ndarray, np.ndarray, int, int]:
-    ys_core, xs_core, weights_core = _component_core_coordinates_and_weights(spatial, patch)
-    if ys_core.size == 0:
-        raise ValueError(f"Component has no support inside patch core: {patch.patch_name}")
+    g_matrix = _component_g_matrix(getattr(estimates, "g", None), n_components)
+    bl = _component_float_vector(getattr(estimates, "bl", None), n_components)
+    lam = _component_float_vector(getattr(estimates, "lam", None), n_components)
+    neurons_sn = _component_float_vector(getattr(estimates, "neurons_sn", None), n_components)
+    t_peak, t_half = _component_timing_arrays(g_matrix, dt_s=1.0 / float(frame_rate_hz))
 
-    peak_index = int(np.argmax(weights_core))
-    peak_y_core = int(ys_core[peak_index])
-    peak_x_core = int(xs_core[peak_index])
-
-    core_mask = np.zeros((patch.core_h, patch.core_w), dtype=bool)
-    threshold = float(np.max(weights_core)) * float(support_threshold_rel)
-    core_mask[ys_core, xs_core] = weights_core >= threshold
-    if not core_mask[peak_y_core, peak_x_core]:
-        core_mask[peak_y_core, peak_x_core] = True
-
-    labeled, _ = ndi.label(core_mask)
-    peak_label = int(labeled[peak_y_core, peak_x_core])
-    if peak_label > 0:
-        core_mask = labeled == peak_label
-
-    eroded = ndi.binary_erosion(core_mask, structure=np.ones((3, 3), dtype=bool))
-    outline = core_mask & ~eroded
-    if not np.any(outline):
-        outline[peak_y_core, peak_x_core] = True
-
-    outline_y_core, outline_x_core = np.nonzero(outline)
-    outline_y = outline_y_core.astype(np.int32, copy=False) + int(patch.y0)
-    outline_x = outline_x_core.astype(np.int32, copy=False) + int(patch.x0)
-    return (
-        outline_y.astype(np.int32, copy=False),
-        outline_x.astype(np.int32, copy=False),
-        int(patch.y0 + peak_y_core),
-        int(patch.x0 + peak_x_core),
-    )
+    rows: list[dict[str, str]] = []
+    for idx in range(n_components):
+        row = {
+            "snr": str(float(snr[idx])),
+            "r_value": str(float(r_value[idx])),
+            "bl": str(float(bl[idx])),
+            "lam": str(float(lam[idx])),
+            "neurons_sn": str(float(neurons_sn[idx])),
+            "g_0": str(float(g_matrix[idx, 0])) if g_matrix.shape[1] > 0 else "nan",
+            "g_1": str(float(g_matrix[idx, 1])) if g_matrix.shape[1] > 1 else "nan",
+            "t_peak": str(float(t_peak[idx])),
+            "t_half": str(float(t_half[idx])),
+        }
+        rows.append(row)
+    return rows, PROFILE_METRIC_KEYS
 
 
-def _global_peak_from_sparse_argmax(spatial, patch: PatchMeta) -> tuple[int, int]:
-    if spatial.nnz == 0:
-        raise ValueError("Cannot derive fallback peak for empty spatial component.")
-    data = np.asarray(spatial.data).reshape(-1)
-    local_flat_index = int(spatial.indices[int(np.argmax(data))])
-    local_y, local_x = np.unravel_index(local_flat_index, (patch.h, patch.w))
-    global_y = int(patch.y0 - patch.core_ly0 + local_y)
-    global_x = int(patch.x0 - patch.core_lx0 + local_x)
-    return global_y, global_x
+def _json_float_or_none(value: object) -> float | None:
+    try:
+        scalar = float(value)
+    except (TypeError, ValueError):
+        return None
+    if np.isfinite(scalar):
+        return scalar
+    return None
 
 
-def _imagej_auto_contrast_to_uint8(
-    image: np.ndarray,
-    saturated_percent: float = 0.35,
-) -> np.ndarray:
+def _imagej_auto_contrast_to_uint8(image: np.ndarray, saturated_percent: float = 0.35) -> np.ndarray:
     arr = np.asarray(image, dtype=np.float32)
     finite = arr[np.isfinite(arr)]
     if finite.size == 0:
@@ -463,308 +239,284 @@ def _write_background_png(bg_load_path: Path, output_path: Path) -> dict[str, ob
     }
 
 
-def _infer_dataset_root(extract_load_fold: Path, crop_load_fold: Path) -> Path:
-    dataset_root = extract_load_fold.parent
-    if not extract_load_fold.is_dir():
-        raise NotADirectoryError(f"Missing extract folder: {extract_load_fold}")
-    if not crop_load_fold.is_dir():
-        raise NotADirectoryError(f"Missing crop folder: {crop_load_fold}")
-    return dataset_root
+def _std_projection_from_movie(movie_tyx: np.ndarray) -> np.ndarray:
+    n_frames = int(movie_tyx.shape[0])
+    h, w = int(movie_tyx.shape[1]), int(movie_tyx.shape[2])
+    sum_image = np.zeros((h, w), dtype=np.float64)
+    sumsq_image = np.zeros((h, w), dtype=np.float64)
+    for start in tqdm(range(0, n_frames, BACKGROUND_CHUNK_FRAMES), desc="app(background)", dynamic_ncols=True):
+        chunk = np.asarray(movie_tyx[start:start + BACKGROUND_CHUNK_FRAMES], dtype=np.float64)
+        sum_image += chunk.sum(axis=0)
+        sumsq_image += (chunk * chunk).sum(axis=0)
+    mean = sum_image / max(n_frames, 1)
+    variance = np.maximum(sumsq_image / max(n_frames, 1) - mean * mean, 0.0)
+    return np.sqrt(variance).astype(np.float32)
 
 
-def _prepare_patches(
-    extract_load_fold: Path,
-    crop_load_fold: Path,
-) -> tuple[Path, list[PatchMeta], int, int]:
-    dataset_root = _infer_dataset_root(extract_load_fold, crop_load_fold)
-    model_dir = get_model_dir(extract_load_fold)
-    if not model_dir.is_dir():
-        raise NotADirectoryError(f"Missing model folder: {model_dir}")
+def _write_background_png_from_y(
+    y_load_path: Path,
+    output_path: Path,
+    *,
+    h: int,
+    w: int,
+    trace_length: int,
+) -> dict[str, object]:
+    image_or_movie = tifffile.memmap(y_load_path)
+    if image_or_movie.ndim == 2:
+        image = np.asarray(image_or_movie)
+    else:
+        movie_tyx = _movie_tyx_from_tif(y_load_path, h=h, w=w, trace_length=trace_length)
+        image = _std_projection_from_movie(movie_tyx)
 
-    patches = _collect_patch_meta(model_dir)
-    crop_params = _load_crop_params(crop_load_fold)
-    core_specs = {
-        spec.name: (int(spec.y0), int(spec.y1), int(spec.x0), int(spec.x1))
-        for spec in crop_params["patch_specs"]
-    }
-    full_h = max(v[1] for v in core_specs.values())
-    full_w = max(v[3] for v in core_specs.values())
-
-    for patch in patches:
-        if patch.patch_name not in core_specs:
-            raise KeyError(f"Missing crop spec for patch: {patch.patch_name}")
-        y0, y1, x0, x1 = core_specs[patch.patch_name]
-        core_h = int(y1 - y0)
-        core_w = int(x1 - x0)
-        pad_h = int(patch.h - core_h)
-        pad_w = int(patch.w - core_w)
-        if core_h <= 0 or core_w <= 0:
-            raise ValueError(f"Invalid core size for {patch.patch_name}: {(core_h, core_w)}")
-        if pad_h < 0 or pad_w < 0 or (pad_h % 2) != 0 or (pad_w % 2) != 0:
-            raise ValueError(
-                f"Invalid patch/core alignment for {patch.patch_name}: "
-                f"patch={(patch.h, patch.w)}, core={(core_h, core_w)}"
-            )
-        patch.y0, patch.y1, patch.x0, patch.x1 = y0, y1, x0, x1
-        patch.core_h, patch.core_w = core_h, core_w
-        patch.core_ly0 = pad_h // 2
-        patch.core_ly1 = patch.core_ly0 + core_h
-        patch.core_lx0 = pad_w // 2
-        patch.core_lx1 = patch.core_lx0 + core_w
-
-    return dataset_root, patches, full_h, full_w
-
-
-def _compute_trace_stats(traces: np.ndarray) -> dict[str, np.ndarray]:
-    mean = traces.mean(axis=1, dtype=np.float64).astype(np.float32)
-    std = traces.std(axis=1, dtype=np.float64).astype(np.float32)
-    p05 = np.percentile(traces, 5.0, axis=1).astype(np.float32)
-    p95 = np.percentile(traces, 95.0, axis=1).astype(np.float32)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    png_uint8 = _imagej_auto_contrast_to_uint8(image)
+    Image.fromarray(png_uint8, mode="L").save(output_path)
     return {
-        "mean": mean,
-        "std": std,
-        "p05": p05,
-        "p95": p95,
+        "file": str(output_path.relative_to(output_path.parent.parent)).replace("\\", "/"),
+        "height": int(image.shape[0]),
+        "width": int(image.shape[1]),
+        "source_path": str(y_load_path),
+        "key": "background",
+        "label": f"{y_load_path.name} STD" if image_or_movie.ndim != 2 else y_load_path.name,
+        "contrast_mode": "imagej_auto_0p35pct",
     }
 
 
-def _json_float_or_none(value: float | np.floating) -> float | None:
-    scalar = float(value)
-    if np.isfinite(scalar):
-        return scalar
+def _existing_optional_path(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    candidate = path.expanduser().resolve()
+    return candidate if _is_file(candidate) else None
+
+
+def _autodiscover_profile(model_load_path: Path, y_load_path: Path | None) -> Path | None:
+    candidates = [
+        model_load_path.parent / "qc" / "profile.csv",
+    ]
+    if y_load_path is not None:
+        candidates.append(y_load_path.parent / "qc" / "profile.csv")
+    for candidate in candidates:
+        if _is_file(candidate):
+            return candidate.resolve()
     return None
 
 
-def _load_web_qc_thresholds() -> dict[str, list[float | None] | None]:
-    if not SAVE_SCHEMA_PATH.is_file():
-        raise FileNotFoundError(f"Missing save schema for QC thresholds: {SAVE_SCHEMA_PATH}")
-    payload = yaml.safe_load(SAVE_SCHEMA_PATH.read_text(encoding="utf-8"))
-    save_cfg = payload.get("save") if isinstance(payload, dict) else None
-    if not isinstance(save_cfg, dict):
-        raise ValueError(f"Invalid save schema structure: {SAVE_SCHEMA_PATH}")
+def _autodiscover_background(y_load_path: Path | None) -> Path | None:
+    if y_load_path is None:
+        return None
+    for name in ("Ybandpass.tif", "Ystd.tif", "Ymean.tif"):
+        candidate = y_load_path.parent / name
+        if _is_file(candidate):
+            return candidate.resolve()
+    return None
+
+
+def _component_peak_xy(A_csc: Any, component_index: int, h: int) -> tuple[int, int]:
+    start = int(A_csc.indptr[component_index])
+    end = int(A_csc.indptr[component_index + 1])
+    if end <= start:
+        return 0, 0
+    data = A_csc.data[start:end]
+    indices = A_csc.indices[start:end]
+    flat_index = int(indices[int(np.argmax(data))])
+    return int(flat_index // h), int(flat_index % h)
+
+
+def _compute_trace_stats(traces: np.ndarray) -> dict[str, np.ndarray]:
     return {
-        "t_snr": save_cfg.get("t_snr"),
-        "t_r_value": save_cfg.get("t_r_value"),
-        "t_lam": save_cfg.get("t_lam"),
-        "t_neurons_sn": save_cfg.get("t_neurons_sn"),
+        "mean": traces.mean(axis=1, dtype=np.float64).astype(np.float32),
+        "std": traces.std(axis=1, dtype=np.float64).astype(np.float32),
+        "p05": np.percentile(traces, 5.0, axis=1).astype(np.float32),
+        "p95": np.percentile(traces, 95.0, axis=1).astype(np.float32),
     }
 
 
-def _suppress_noisy_loggers() -> None:
-    for logger_name in ("caiman", "caiman.source_extraction", "web.build_cache"):
-        logger = logging.getLogger(logger_name)
-        logger.setLevel(logging.WARNING)
-        logger.propagate = False
+def _write_trace_cache(app_fold: Path, source_key: str, traces: np.ndarray) -> dict[str, dict[str, np.ndarray]]:
+    traces = np.ascontiguousarray(traces, dtype=np.float32)
+    traces.tofile(app_fold / TRACE_SOURCE_FILES[source_key])
+    return {source_key: _compute_trace_stats(traces)}
+
+
+def _load_cnmf(model_load_path: Path) -> Any:
+    from caiman.source_extraction.cnmf.cnmf import load_CNMF
+
+    with _silence_stdio():
+        return load_CNMF(str(model_load_path), n_processes=1, dview=None)
 
 
 def build_cache(
     *,
-    bg_load_path: Path,
-    extract_load_fold: Path,
-    crop_load_fold: Path,
+    model_load_path: Path,
+    y_load_path: Path | None,
     app_fold: Path,
+    bg_load_path: Path | None = None,
+    profile_load_path: Path | None = None,
 ) -> None:
-    _suppress_noisy_loggers()
-    extract_load_fold = extract_load_fold.resolve()
-    bg_load_path = bg_load_path.resolve()
-    crop_load_fold = crop_load_fold.resolve()
-    app_fold = app_fold.resolve()
+    model_load_path = model_load_path.expanduser().resolve()
+    y_load_path = y_load_path.expanduser().resolve() if y_load_path is not None else None
+    app_fold = app_fold.expanduser().resolve()
+    profile_load_path = _existing_optional_path(profile_load_path)
+    bg_load_path = _existing_optional_path(bg_load_path)
+
+    if not _is_file(model_load_path):
+        raise FileNotFoundError(f"Missing model file: {model_load_path}")
+    if y_load_path is not None and not _is_file(y_load_path):
+        raise FileNotFoundError(f"Missing movie file: {y_load_path}")
+
+    logging.getLogger("caiman").setLevel(logging.WARNING)
     app_fold.mkdir(parents=True, exist_ok=True)
     (app_fold / BACKGROUND_DIRNAME).mkdir(parents=True, exist_ok=True)
 
-    dataset_root, patches, full_h, full_w = _prepare_patches(
-        extract_load_fold,
-        crop_load_fold,
-    )
-    if not bg_load_path.is_file():
-        raise FileNotFoundError(f"Missing background image: {bg_load_path}")
+    print(f"[app] loading model {model_load_path}")
+    cnm = _load_cnmf(model_load_path)
+    h, w = _read_model_dims(model_load_path, cnm)
+    frame_rate_hz = _frame_rate_hz(cnm)
 
-    qc_thresholds = _load_web_qc_thresholds()
-    qc_threshold_specs = _load_qc_threshold_specs(
-        extract_load_fold=extract_load_fold,
-        t_snr=qc_thresholds["t_snr"],
-        t_r_value=qc_thresholds["t_r_value"],
-        t_lam=qc_thresholds["t_lam"],
-        t_neurons_sn=qc_thresholds["t_neurons_sn"],
-    )
-
-    background_output = app_fold / BACKGROUND_DIRNAME / "background.png"
-    background_specs = [_write_background_png(bg_load_path, background_output)]
-
-    all_trace_rows_by_source: dict[str, list[np.ndarray]] = {
-        source_key: [] for source_key in TRACE_SOURCE_FILES
-    }
-    xs: list[int] = []
-    ys: list[int] = []
-    ids: list[int] = []
-    patch_names: list[str] = []
-    component_indices: list[int] = []
-    metric_columns: dict[str, list[float | bool]] = {key: [] for key in QUALITY_PROFILE_KEYS}
-
-    neuron_id = 0
-    trace_length: int | None = None
-    frame_rate_hz: float | None = None
-    anchor_counts = {"outline": 0, "fallback_argmax": 0}
-
-    model_dir = get_model_dir(extract_load_fold)
-    profile_dir = get_profile_dir(extract_load_fold)
-
-    for patch in tqdm(patches, desc="app", unit="patch", dynamic_ncols=True):
-        model_path = model_dir / f"{patch.patch_name}.tif.hdf5"
-        profile_path = profile_dir / f"{patch.patch_name}.tif.csv"
-        if not model_path.is_file() or not profile_path.is_file():
-            continue
-
-        metrics_by_component = _read_profile_metrics(profile_path)
-        with silence_stdio():
-            cnm_model = load_CNMF(str(model_path), n_processes=1, dview=None)
-
-        A = cnm_model.estimates.A.tocsc()
-        C = np.asarray(cnm_model.estimates.C, dtype=np.float32)
-        YrA = cnm_model.estimates.YrA
-        if YrA is None:
-            YrA = np.zeros_like(C, dtype=np.float32)
-        else:
-            YrA = np.asarray(YrA, dtype=np.float32)
-            if YrA.shape != C.shape:
-                raise ValueError(
-                    f"Unexpected YrA shape mismatch at {patch.patch_name}: "
-                    f"C={C.shape}, YrA={YrA.shape}"
-                )
-        C_PLUS_YRA = C + YrA
-        if trace_length is None:
-            trace_length = int(C.shape[1])
-        elif trace_length != int(C.shape[1]):
-            raise ValueError(f"Unexpected trace length mismatch at {patch.patch_name}")
-
-        patch_frame_rate_hz = float(cnm_model.params.get("data", "fr"))
-        if frame_rate_hz is None:
-            frame_rate_hz = patch_frame_rate_hz
-        elif abs(frame_rate_hz - patch_frame_rate_hz) > 1e-6:
-            raise ValueError("Frame-rate mismatch across patches.")
-
-        if A.shape[1] != len(metrics_by_component):
-            raise ValueError(
-                f"Profile/model mismatch for {patch.patch_name}: A={A.shape[1]}, csv={len(metrics_by_component)}"
-            )
-
-        keep_mask = _read_patch_qc_keep_mask(
-            profile_path=profile_path,
-            n_components=A.shape[1],
-            qc_threshold_specs=qc_threshold_specs,
+    A = cnm.estimates.A.tocsc()
+    C = np.asarray(cnm.estimates.C, dtype=np.float32)
+    if A.shape != (h * w, C.shape[0]):
+        raise ValueError(f"A/C shape mismatch: A={A.shape}, C={C.shape}, dims={(h, w)}")
+    n_components, trace_length = int(C.shape[0]), int(C.shape[1])
+    if profile_load_path is None:
+        profile_load_path = _autodiscover_profile(model_load_path, y_load_path)
+    if profile_load_path is not None:
+        print(f"[app] reading profile {profile_load_path}")
+        rows, metric_keys = _read_profile(profile_load_path, n_components=n_components)
+    else:
+        if y_load_path is None:
+            raise FileNotFoundError("Profile is missing; y_load_path is required to compute SNR/r_value.")
+        rows, metric_keys = _profile_from_model(
+            cnm=cnm,
+            y_load_path=y_load_path,
+            h=h,
+            w=w,
+            n_components=n_components,
+            trace_length=trace_length,
+            frame_rate_hz=frame_rate_hz,
         )
 
-        for component_index in range(A.shape[1]):
-            if not bool(keep_mask[component_index]):
-                continue
-            spatial = A.getcol(component_index)
-            try:
-                _, _, peak_y, peak_x = _component_outline_coordinates(spatial, patch)
-                anchor_counts["outline"] += 1
-            except ValueError:
-                peak_y, peak_x = _global_peak_from_sparse_argmax(spatial, patch)
-                anchor_counts["fallback_argmax"] += 1
+    print(f"[app] caching {n_components} neurons, {trace_length} frames")
+    if bg_load_path is None:
+        bg_load_path = _autodiscover_background(y_load_path)
+    if bg_load_path is not None:
+        background_spec = _write_background_png(
+            bg_load_path,
+            app_fold / BACKGROUND_DIRNAME / "background.png",
+        )
+    else:
+        if y_load_path is None:
+            raise FileNotFoundError("Background is missing; y_load_path is required to compute a background projection.")
+        background_spec = _write_background_png_from_y(
+            y_load_path,
+            app_fold / BACKGROUND_DIRNAME / "background.png",
+            h=h,
+            w=w,
+            trace_length=trace_length,
+        )
 
-            metrics = metrics_by_component[component_index]
-            ids.append(neuron_id)
-            xs.append(int(peak_x))
-            ys.append(int(peak_y))
-            patch_names.append(patch.patch_name)
-            component_indices.append(int(component_index))
-            for key in QUALITY_PROFILE_KEYS:
-                metric_columns[key].append(metrics[key])
-            all_trace_rows_by_source["c"].append(np.asarray(C[component_index], dtype=np.float32))
-            all_trace_rows_by_source["c_plus_yra"].append(
-                np.asarray(C_PLUS_YRA[component_index], dtype=np.float32)
-            )
-            neuron_id += 1
+    xs = np.zeros(n_components, dtype=np.int32)
+    ys = np.zeros(n_components, dtype=np.int32)
+    for idx in tqdm(range(n_components), desc="app(points)", dynamic_ncols=True):
+        xs[idx], ys[idx] = _component_peak_xy(A, idx, h=h)
 
-    if not all_trace_rows_by_source["c"]:
-        raise RuntimeError("No renderable neurons found for web cache.")
-    if trace_length is None or frame_rate_hz is None:
-        raise RuntimeError("Failed to infer trace metadata.")
+    YrA = getattr(cnm.estimates, "YrA", None)
+    if YrA is None:
+        YrA = np.zeros_like(C, dtype=np.float32)
+    else:
+        YrA = np.asarray(YrA, dtype=np.float32)
+        if YrA.shape != C.shape:
+            raise ValueError(f"YrA/C shape mismatch: YrA={YrA.shape}, C={C.shape}")
 
     trace_stats_by_source: dict[str, dict[str, np.ndarray]] = {}
-    for source_key, rows in all_trace_rows_by_source.items():
-        traces = np.stack(rows, axis=0).astype(np.float32, copy=False)
-        trace_stats_by_source[source_key] = _compute_trace_stats(traces)
-        trace_file = app_fold / TRACE_SOURCE_FILES[source_key]
-        traces.tofile(trace_file)
+    trace_stats_by_source.update(_write_trace_cache(app_fold, "c", C))
+    trace_stats_by_source.update(_write_trace_cache(app_fold, "yra", YrA))
+    c_plus_yra = C + YrA
+    trace_stats_by_source.update(_write_trace_cache(app_fold, "c_plus_yra", c_plus_yra))
 
     points_payload = {
-        "id": ids,
-        "x": xs,
-        "y": ys,
-        "patch_name": patch_names,
-        "component_index": component_indices,
+        "id": list(range(n_components)),
+        "x": xs.astype(int).tolist(),
+        "y": ys.astype(int).tolist(),
         "metrics": {
-            key: [bool(v) if key == "r_value_unreliable_joint_only" else _json_float_or_none(v) for v in values]
-            for key, values in metric_columns.items()
+            key: [_json_float_or_none(row.get(key)) for row in rows]
+            for key in metric_keys
         },
         "trace_stats": {
             source_key: {
-                stat_key: [_json_float_or_none(v) for v in values.astype(np.float32)]
+                stat_key: [_json_float_or_none(v) for v in values]
                 for stat_key, values in trace_stats.items()
             }
             for source_key, trace_stats in trace_stats_by_source.items()
         },
     }
-    points_file = app_fold / POINTS_FILE_NAME
-    points_file.write_text(json.dumps(points_payload, separators=(",", ":")), encoding="utf-8")
+    (app_fold / POINTS_FILE_NAME).write_text(
+        json.dumps(points_payload, separators=(",", ":")),
+        encoding="utf-8",
+    )
 
     metadata = {
-        "dataset_root": str(dataset_root),
-        "extract_load_fold": str(extract_load_fold),
-        "crop_load_fold": str(crop_load_fold),
-        "bg_load_path": str(bg_load_path),
+        "cache_version": 5,
+        "model_load_path": str(model_load_path),
+        "y_load_path": str(y_load_path) if y_load_path is not None else None,
+        "profile_load_path": str(profile_load_path) if profile_load_path is not None else None,
+        "bg_load_path": str(bg_load_path) if bg_load_path is not None else None,
         "app_fold": str(app_fold),
-        "full_height": int(full_h),
-        "full_width": int(full_w),
-        "trace_length": int(trace_length),
-        "frame_rate_hz": float(frame_rate_hz),
-        "neuron_count": int(len(ids)),
+        "full_height": int(h),
+        "full_width": int(w),
+        "trace_length": trace_length,
+        "frame_rate_hz": frame_rate_hz,
+        "neuron_count": n_components,
+        "metric_keys": list(metric_keys),
         "trace_sources": {
             "c": {
                 "file": TRACE_SOURCE_FILES["c"],
                 "label": "C",
-                "description": "CNMF fitted temporal trace",
+                "description": "CNMF-E fitted temporal trace",
+                "dtype": "float32",
+            },
+            "yra": {
+                "file": TRACE_SOURCE_FILES["yra"],
+                "label": "YrA",
+                "description": "CNMF-E residual temporal trace",
                 "dtype": "float32",
             },
             "c_plus_yra": {
                 "file": TRACE_SOURCE_FILES["c_plus_yra"],
                 "label": "C + YrA",
-                "description": "CNMF fitted temporal trace plus YrA residual",
+                "description": "CNMF-E fitted temporal trace plus YrA residual",
                 "dtype": "float32",
-            }
+            },
         },
         "points_file": POINTS_FILE_NAME,
-        "backgrounds": background_specs,
+        "backgrounds": [background_spec],
         "default_background_key": "background",
-        "anchor_counts": anchor_counts,
-        "qc_filtering": {
-            "enabled": True,
-            "source": str(SAVE_SCHEMA_PATH),
-            "thresholds": qc_thresholds,
+        "sources": {
+            "model": _source_signature(model_load_path),
+            **({"movie": _source_signature(y_load_path)} if y_load_path is not None else {}),
+            **({"background": _source_signature(bg_load_path)} if bg_load_path is not None else {}),
+            **({"profile": _source_signature(profile_load_path)} if profile_load_path is not None else {}),
         },
     }
-    metadata_file = app_fold / METADATA_FILE_NAME
-    metadata_file.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    (app_fold / METADATA_FILE_NAME).write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    print(f"[app] cache ready: {app_fold}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build cache files for the standalone neuron ROI web app.")
-    parser.add_argument("--bg_load_path", type=Path, required=True, help="Path to the background TIFF.")
-    parser.add_argument("--extract_load_fold", type=Path, required=True, help="Path to the extract folder.")
-    parser.add_argument("--crop_load_fold", type=Path, required=True, help="Path to the crop folder.")
-    parser.add_argument("--app_fold", type=Path, required=True, help="Path to the app cache folder.")
+    parser = argparse.ArgumentParser(description="Build cache files for the CM2 neuron web app.")
+    parser.add_argument("--model_load_path", type=Path, required=True)
+    parser.add_argument("--y_load_path", type=Path, default=None)
+    parser.add_argument("--bg_load_path", type=Path, default=None)
+    parser.add_argument("--profile_load_path", type=Path, default=None)
+    parser.add_argument("--app_fold", type=Path, required=True)
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     build_cache(
-        bg_load_path=args.bg_load_path,
-        extract_load_fold=args.extract_load_fold,
-        crop_load_fold=args.crop_load_fold,
+        model_load_path=args.model_load_path,
+        y_load_path=args.y_load_path,
         app_fold=args.app_fold,
+        bg_load_path=args.bg_load_path,
+        profile_load_path=args.profile_load_path,
     )
 
 

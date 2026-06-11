@@ -1,0 +1,15 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: #070707;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+}

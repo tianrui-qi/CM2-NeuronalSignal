@@ -14,57 +14,84 @@ from .build_cache import (
 from .server import create_app
 
 
-def _cache_metadata_path(app_fold: Path) -> Path:
-    return app_fold / METADATA_FILE_NAME
+def _source_signature(path: Path) -> dict[str, object]:
+    stat = path.stat()
+    return {
+        "path": str(path.resolve()),
+        "mtime_ns": int(stat.st_mtime_ns),
+        "size": int(stat.st_size),
+    }
+
+
+def _optional_file(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    resolved = path.expanduser().resolve()
+    return resolved if resolved.is_file() else None
 
 
 def _cache_matches_request(
     *,
+    y_load_path: Path | None,
+    model_load_path: Path,
+    bg_load_path: Path | None,
+    profile_load_path: Path | None,
     app_fold: Path,
-    bg_load_path: Path,
-    extract_load_fold: Path,
-    crop_load_fold: Path,
 ) -> bool:
-    metadata_path = _cache_metadata_path(app_fold)
+    metadata_path = app_fold / METADATA_FILE_NAME
     if not metadata_path.is_file():
         return False
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return False
-
-    trace_sources = metadata.get("trace_sources")
-    if not isinstance(trace_sources, dict):
+    if metadata.get("cache_version") != 5:
         return False
 
     required_paths = [
         app_fold / POINTS_FILE_NAME,
         app_fold / BACKGROUND_DIRNAME / "background.png",
     ]
+    trace_sources = metadata.get("trace_sources")
+    if not isinstance(trace_sources, dict):
+        return False
     for source_key in TRACE_SOURCE_FILES:
-        trace_spec = trace_sources.get(source_key)
-        if not isinstance(trace_spec, dict):
+        spec = trace_sources.get(source_key)
+        if not isinstance(spec, dict):
             return False
-        trace_file = trace_spec.get("file")
-        if not isinstance(trace_file, str) or not trace_file:
+        filename = spec.get("file")
+        if not isinstance(filename, str) or not filename:
             return False
-        required_paths.append(app_fold / trace_file)
-    if not all(path.is_file() for path in required_paths):
+        required_paths.append(app_fold / filename)
+    if not all(path.is_file() and path.stat().st_size > 0 for path in required_paths):
         return False
 
-    return (
-        Path(metadata.get("extract_load_fold", "")).resolve() == extract_load_fold.resolve()
-        and Path(metadata.get("bg_load_path", "")).resolve() == bg_load_path.resolve()
-        and Path(metadata.get("crop_load_fold", "")).resolve() == crop_load_fold.resolve()
-    )
+    sources = metadata.get("sources")
+    if not isinstance(sources, dict):
+        return False
+    if sources.get("model") != _source_signature(model_load_path):
+        return False
+
+    optional_sources = {
+        "movie": y_load_path,
+        "background": bg_load_path,
+        "profile": profile_load_path,
+    }
+    for key, path in optional_sources.items():
+        if path is None or key not in sources:
+            continue
+        if sources[key] != _source_signature(path):
+            return False
+    return True
 
 
 def run_app(
     *,
-    bg_load_path: Path,
-    extract_load_fold: Path,
-    crop_load_fold: Path,
+    model_load_path: Path,
+    y_load_path: Path | None,
     app_fold: Path,
+    bg_load_path: Path | None = None,
+    profile_load_path: Path | None = None,
     host: str = "127.0.0.1",
     port: int = 8765,
     debug: bool = False,
@@ -72,22 +99,25 @@ def run_app(
 ) -> None:
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
 
-    bg_load_path = bg_load_path.resolve()
-    extract_load_fold = extract_load_fold.resolve()
-    crop_load_fold = crop_load_fold.resolve()
-    app_fold = app_fold.resolve()
+    model_load_path = model_load_path.expanduser().resolve()
+    y_load_path = y_load_path.expanduser().resolve() if y_load_path is not None else None
+    bg_load_path = _optional_file(bg_load_path)
+    profile_load_path = _optional_file(profile_load_path)
+    app_fold = app_fold.expanduser().resolve()
 
     if force_rebuild or not _cache_matches_request(
-        app_fold=app_fold,
+        y_load_path=y_load_path,
+        model_load_path=model_load_path,
         bg_load_path=bg_load_path,
-        extract_load_fold=extract_load_fold,
-        crop_load_fold=crop_load_fold,
+        profile_load_path=profile_load_path,
+        app_fold=app_fold,
     ):
         build_cache(
-            bg_load_path=bg_load_path,
-            extract_load_fold=extract_load_fold,
-            crop_load_fold=crop_load_fold,
+            model_load_path=model_load_path,
+            y_load_path=y_load_path,
             app_fold=app_fold,
+            bg_load_path=bg_load_path,
+            profile_load_path=profile_load_path,
         )
 
     app = create_app(app_fold)

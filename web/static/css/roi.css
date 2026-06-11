@@ -1,0 +1,248 @@
+.roi-workflow-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: rgba(247, 241, 231, 0.82);
+  font-size: var(--font-size-sm);
+}
+
+.roi-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px 72px 48px;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 34px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface-row);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.roi-row:focus-visible {
+  outline: 2px solid rgba(122, 210, 190, 0.72);
+  outline-offset: 2px;
+}
+
+.roi-row-header {
+  min-height: 24px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: default;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+.roi-row-header:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
+.roi-row-header > span:nth-child(2),
+.roi-row-header > span:nth-child(3) {
+  justify-self: end;
+  text-align: right;
+}
+
+.roi-row-active {
+  border-color: var(--border-hover);
+  background: var(--surface-row-hover);
+}
+
+.roi-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.roi-row-swatch {
+  display: inline-block;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 3px;
+  box-shadow: var(--shadow-control);
+}
+
+.roi-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roi-row-count {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.roi-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.roi-row-action-btn {
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px;
+  font-size: var(--font-size-xs);
+  line-height: 18px;
+}
+
+.roi-row-action-btn:disabled {
+  cursor: default;
+  opacity: 0.36;
+}
+
+.roi-row-box,
+.roi-row-clear,
+.roi-row-delete {
+  position: relative;
+  flex: 0 0 20px;
+  width: 20px;
+  min-width: 20px;
+  padding: 0;
+  font-size: 0;
+  line-height: 0;
+}
+
+.roi-row-box::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 9px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+}
+
+.roi-row-box::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 1.5px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  opacity: 0.65;
+  transform: translate(-50%, -50%);
+}
+
+.roi-row-clear::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  width: 11px;
+  height: 6px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  box-sizing: border-box;
+  transform: translate(-50%, -50%) rotate(-18deg);
+}
+
+.roi-row-clear::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 68%;
+  width: 12px;
+  height: 1.5px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  opacity: 0.7;
+  transform: translate(-50%, -50%);
+}
+
+.roi-row-delete::before,
+.roi-row-delete::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 1.5px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  transform-origin: center;
+}
+
+.roi-row-delete::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.roi-row-delete::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.roi-row-add {
+  position: relative;
+  border-style: dashed;
+  border-color: rgba(247, 241, 231, 0.2);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.roi-row-add:hover {
+  border-color: var(--border-hover);
+  background: var(--surface-row-hover);
+  color: var(--text);
+}
+
+.roi-row-color-swatch,
+.roi-row-add-swatch {
+  cursor: pointer;
+}
+
+.roi-color-popover {
+  position: absolute;
+  z-index: 80;
+  left: 0;
+  bottom: calc(100% + var(--space-2));
+  display: grid;
+  grid-template-columns: repeat(6, 14px);
+  gap: 6px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid rgba(255, 245, 228, 0.18);
+  border-radius: var(--radius);
+  background: rgba(34, 32, 29, 0.96);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(16px);
+}
+
+.roi-color-option {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 4px;
+  box-shadow: var(--shadow-control);
+  cursor: pointer;
+}
+
+.roi-color-option:hover,
+.roi-color-option:focus-visible {
+  outline: 2px solid rgba(255, 245, 228, 0.42);
+  outline-offset: 1px;
+}

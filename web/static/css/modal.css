@@ -1,0 +1,81 @@
+.roi-box-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.26);
+}
+
+.roi-box-editor {
+  width: min(340px, calc(100vw - 36px));
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(18, 16, 14, 0.92);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(18px) saturate(135%);
+}
+
+.roi-box-editor-header,
+.roi-box-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.roi-box-editor-header {
+  margin-bottom: var(--space-5);
+}
+
+.roi-box-editor-header h4 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.roi-box-editor-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius);
+  background: var(--surface-control);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.roi-box-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.roi-box-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.roi-box-field input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius);
+  background: var(--surface-control);
+  color: var(--text);
+  font: inherit;
+}
+
+.roi-box-actions {
+  justify-content: flex-end;
+  margin-top: var(--space-5);
+}

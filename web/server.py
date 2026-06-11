@@ -14,7 +14,6 @@ STATIC_DIR = BASE_DIR / "static"
 def create_app(app_fold: Path) -> Flask:
     cache_root = app_fold.resolve()
     app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
-    app.config["CACHE_ROOT"] = str(cache_root)
 
     @app.route("/")
     def index():
@@ -33,15 +32,15 @@ def create_app(app_fold: Path) -> Flask:
     def health():
         metadata_path = cache_root / "metadata.json"
         if not metadata_path.is_file():
-            abort(503, description="Web cache missing. Run script/app.py first.")
+            abort(503, description="Web cache is missing.")
         return {"ok": True}
 
     return app
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Serve the standalone neuron ROI web app.")
-    parser.add_argument("--app_fold", type=Path, required=True, help="Path to the app cache folder.")
+    parser = argparse.ArgumentParser(description="Serve the CM2 neuron web app.")
+    parser.add_argument("--app_fold", type=Path, required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--debug", action="store_true")
