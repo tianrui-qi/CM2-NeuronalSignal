@@ -1,0 +1,3 @@
+raw_load_path: data/raw/Y.tif
+mmap_save_stem: data/mmap/Y
+write_block_mib: 128

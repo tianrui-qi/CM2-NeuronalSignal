@@ -1,0 +1,5 @@
+web_dir: web
+cache_load_fold: data/cache/Y/
+host: 127.0.0.1
+port: 8765
+debug: false

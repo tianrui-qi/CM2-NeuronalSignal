@@ -1,5 +1,0 @@
-normalize:
-  x_load_path: ???
-  x_save_path: ???
-  chunk_size: 32
-  dtype: float32

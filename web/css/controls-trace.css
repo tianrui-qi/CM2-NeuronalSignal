@@ -1,0 +1,81 @@
+.trace-section-body {
+  gap: var(--space-5);
+  padding-right: var(--space-5);
+  padding-left: var(--space-5);
+}
+
+.heatmap-plot-panel {
+  padding-top: var(--space-5);
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.heatmap-colorbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin-top: var(--space-3);
+  margin-left: calc(var(--trace-strip-width, 5px) + var(--trace-strip-gap, 2px));
+}
+
+.heatmap-colorbar.hidden {
+  display: none;
+}
+
+.heatmap-colorbar-track {
+  height: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(90deg, rgb(0, 0, 0), rgb(255, 255, 255));
+}
+
+.heatmap-colorbar-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1;
+}
+
+.primary-btn,
+.mini-btn,
+.trace-source-btn {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius);
+  background: var(--surface-control);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.primary-btn {
+  background: var(--accent);
+}
+
+.mini-btn {
+  padding: 5px 9px;
+  font-size: var(--font-size-sm);
+}
+
+.trace-source-toggle {
+  display: inline-flex;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.trace-source-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 0;
+  border-right: 1px solid rgba(255, 245, 228, 0.14);
+  border-radius: 0;
+  font-size: var(--font-size-sm);
+}
+
+.trace-source-btn:last-child {
+  border-right: 0;
+}
+
+.trace-source-btn.active {
+  background: var(--surface-active, rgba(255, 248, 239, 0.2));
+}
