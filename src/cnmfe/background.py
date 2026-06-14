@@ -101,14 +101,14 @@ def movie_tyx_from_mmap(
     return yr.T.reshape((frames, height, width), order="F")
 
 
-def std_projection_from_mmap(
+def mean_std_projection_from_mmap(
     mmap_load_path: str | Path,
     *,
     height: int,
     width: int,
     trace_length: int,
     block_mib: int = BACKGROUND_MMAP_BLOCK_MIB,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     yr, dims, frames = load_memmap_movie(mmap_load_path)
     if dims != (height, width):
         raise ValueError(f"mmap dims {dims} do not match model dims {(height, width)}: {mmap_load_path}")
@@ -119,13 +119,36 @@ def std_projection_from_mmap(
     target_bytes = max(1, int(block_mib)) * 1024 * 1024
     block_pixels = max(1, target_bytes // max(1, bytes_per_pixel_trace))
     d = int(height) * int(width)
-    out = np.empty(d, dtype=np.float32)
+    mean_out = np.empty(d, dtype=np.float32)
+    std_out = np.empty(d, dtype=np.float32)
     for row0 in tqdm(range(0, d, block_pixels), desc="cache(background)", dynamic_ncols=True):
         row1 = min(row0 + block_pixels, d)
         block = np.asarray(yr[row0:row1, :], dtype=np.float32)
-        out[row0:row1] = block.std(axis=1, dtype=np.float64)
+        mean_out[row0:row1] = block.mean(axis=1, dtype=np.float64)
+        std_out[row0:row1] = block.std(axis=1, dtype=np.float64)
         del block
-    return out.reshape((height, width), order="F")
+    return (
+        mean_out.reshape((height, width), order="F"),
+        std_out.reshape((height, width), order="F"),
+    )
+
+
+def std_projection_from_mmap(
+    mmap_load_path: str | Path,
+    *,
+    height: int,
+    width: int,
+    trace_length: int,
+    block_mib: int = BACKGROUND_MMAP_BLOCK_MIB,
+) -> np.ndarray:
+    _, std_image = mean_std_projection_from_mmap(
+        mmap_load_path,
+        height=height,
+        width=width,
+        trace_length=trace_length,
+        block_mib=block_mib,
+    )
+    return std_image
 
 
 def std_projection(movie_tyx: np.ndarray) -> np.ndarray:

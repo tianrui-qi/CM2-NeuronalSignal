@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-CACHE_VERSION = 7
+CACHE_VERSION = 11
 POINTS_FILE_NAME = "points.json"
 METADATA_FILE_NAME = "metadata.json"
 BACKGROUND_DIRNAME = "backgrounds"

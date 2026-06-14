@@ -17,17 +17,37 @@ const DEFAULT_ROI_COLORS = [
 ];
 const UNASSIGNED_POINT_COLOR = "rgba(248,248,248,0.62)";
 const UNASSIGNED_LINE_COLOR = "rgba(32,27,22,0.28)";
-const TRACE_SOURCE_ORDER = ["c", "c_plus_yra", "c_bl"];
+const TRACE_SOURCE_ORDER = ["c_bl", "c_bl_plus_yra"];
 const TRACE_SOURCE_UI_LABELS = {
-  c: "C",
-  c_plus_yra: "C + YrA",
-  c_bl: "C-bl",
+  c_bl: "C - bl",
+  c_bl_plus_yra: "C - bl + YrA",
+};
+const TRACE_VALUE_MODE_ORDER = ["df", "dff"];
+const TRACE_VALUE_MODE_UI_LABELS = {
+  df: "ΔF",
+  dff: "ΔF/F",
+};
+const DFF_PROJECTION_SOURCE_KEY = "ybg_projection";
+const DFF_DEFAULT_BASELINE_PERCENTILE = 50;
+const DFF_MIN_BASELINE_ABS = 1e-6;
+const TRACE_EFFECTIVE_SOURCES = {
+  df: {
+    c_bl: "c_bl",
+    c_bl_plus_yra: "c_bl_plus_yra",
+  },
+  dff: {
+    c_bl: "dff_c_bl",
+    c_bl_plus_yra: "dff_c_bl_plus_yra",
+  },
 };
 const TRACE_VIRTUAL_SOURCES = {
   c_bl: { baseSource: "c", subtractMetric: "bl" },
+  c_bl_plus_yra: { baseSource: "c_plus_yra", subtractMetric: "bl" },
+  dff_c_bl: { baseSource: "c", subtractMetric: "bl", dffProjectionSource: DFF_PROJECTION_SOURCE_KEY },
+  dff_c_bl_plus_yra: { baseSource: "c_plus_yra", subtractMetric: "bl", dffProjectionSource: DFF_PROJECTION_SOURCE_KEY },
 };
-const WORKFLOW_SECTIONS = ["qc", "region", "roi", "trace"];
-const DEFAULT_OPEN_SECTIONS = { qc: true, region: true, roi: true, trace: true };
+const WORKFLOW_SECTIONS = ["background", "qc", "region", "roi", "trace"];
+const DEFAULT_OPEN_SECTIONS = { background: true, qc: true, region: true, roi: true, trace: true };
 const BLUEPRINT_NONE = "none";
 const BLUEPRINT_COLOR_SCALE = "RdBu";
 const BLUEPRINT_SIGMA_RANGE = 3;
@@ -63,7 +83,11 @@ const state = {
   pointIndexByNeuronId: new Map(),
   rois: [],
   activeRoiId: null,
-  activeSignalSource: "c",
+  activeSignalSource: "c_bl",
+  activeTraceValueMode: "df",
+  dffDenominatorCache: new Map(),
+  traceDisplayStatsCache: new Map(),
+  activeBackgroundKey: null,
   activeBlueprintMetric: BLUEPRINT_NONE,
   qcRanges: {},
   regionPolygons: [],
@@ -204,7 +228,7 @@ function refreshRoiViews({ includePlots = false } = {}) {
 
 function activateRoi(roiId) {
   state.activeRoiId = state.activeRoiId === roiId ? null : getRoiById(roiId)?.id ?? null;
-  refreshRoiViews();
+  refreshRoiViews({ includePlots: true });
 }
 
 function addRoiWithColor(color, { box = null } = {}) {
@@ -343,6 +367,8 @@ function saveUiState() {
       rois: state.rois,
       activeRoiId: null,
       activeSignalSource: state.activeSignalSource,
+      activeTraceValueMode: state.activeTraceValueMode,
+      activeBackgroundKey: state.activeBackgroundKey,
       activeBlueprintMetric: state.activeBlueprintMetric,
       qcRanges: state.qcRanges,
       regionPolygons: state.regionPolygons,
@@ -384,6 +410,10 @@ function loadUiState() {
     if (isTraceSourceAvailable(parsed.activeSignalSource)) {
       state.activeSignalSource = parsed.activeSignalSource;
     }
+    if (isTraceValueModeAvailable(parsed.activeTraceValueMode, state.activeSignalSource)) {
+      state.activeTraceValueMode = parsed.activeTraceValueMode;
+    }
+    state.activeBackgroundKey = normalizeBackgroundKey(parsed.activeBackgroundKey);
     if (isAvailableBlueprintMetric(parsed.activeBlueprintMetric)) {
       state.activeBlueprintMetric = parsed.activeBlueprintMetric;
     }
@@ -404,7 +434,67 @@ function loadUiState() {
 }
 
 function getAvailableTraceSourceKeys() {
-  return TRACE_SOURCE_ORDER.filter((sourceKey) => isTraceSourceAvailable(sourceKey));
+  return TRACE_SOURCE_ORDER.filter((sourceKey) => (
+    TRACE_VALUE_MODE_ORDER.some((modeKey) => isTraceSourceAvailable(getEffectiveTraceSourceKey(sourceKey, modeKey)))
+  ));
+}
+
+function getEffectiveTraceSourceKey(
+  signalSource = state.activeSignalSource,
+  valueMode = state.activeTraceValueMode
+) {
+  return TRACE_EFFECTIVE_SOURCES[valueMode]?.[signalSource] ?? signalSource;
+}
+
+function isTraceValueModeAvailable(valueMode, signalSource = state.activeSignalSource) {
+  return TRACE_VALUE_MODE_ORDER.includes(valueMode)
+    && isTraceSourceAvailable(getEffectiveTraceSourceKey(signalSource, valueMode));
+}
+
+function getAvailableTraceValueModes(signalSource = state.activeSignalSource) {
+  return TRACE_VALUE_MODE_ORDER.filter((valueMode) => isTraceValueModeAvailable(valueMode, signalSource));
+}
+
+function getAvailableBackgrounds() {
+  return Array.isArray(state.meta?.backgrounds) ? state.meta.backgrounds : [];
+}
+
+function getDefaultBackgroundKey() {
+  const backgrounds = getAvailableBackgrounds();
+  const defaultKey = state.meta?.default_background_key;
+  if (backgrounds.some((background) => background.key === defaultKey)) {
+    return defaultKey;
+  }
+  return backgrounds[0]?.key ?? null;
+}
+
+function normalizeBackgroundKey(backgroundKey) {
+  const backgrounds = getAvailableBackgrounds();
+  if (backgrounds.some((background) => background.key === backgroundKey)) {
+    return backgroundKey;
+  }
+  return getDefaultBackgroundKey();
+}
+
+function getActiveBackground() {
+  const backgroundKey = normalizeBackgroundKey(state.activeBackgroundKey);
+  return getAvailableBackgrounds().find((background) => background.key === backgroundKey) ?? null;
+}
+
+function ensureValidActiveBackgroundKey() {
+  state.activeBackgroundKey = normalizeBackgroundKey(state.activeBackgroundKey);
+}
+
+function setActiveBackgroundKey(backgroundKey) {
+  const next = normalizeBackgroundKey(backgroundKey);
+  if (!next || next === state.activeBackgroundKey) {
+    return;
+  }
+  state.activeBackgroundKey = next;
+  saveUiState();
+  renderWorkflowSummaries();
+  renderBackgroundControl();
+  renderMap();
 }
 
 function isTraceSourceAvailable(sourceKey) {
@@ -412,6 +502,15 @@ function isTraceSourceAvailable(sourceKey) {
     return true;
   }
   const virtual = TRACE_VIRTUAL_SOURCES[sourceKey];
+  if (virtual?.dffProjectionSource) {
+    return Boolean(
+      state.meta?.trace_sources?.[virtual.baseSource]
+      && state.tracesBySource[virtual.baseSource]
+      && state.meta?.trace_sources?.[virtual.dffProjectionSource]
+      && state.tracesBySource[virtual.dffProjectionSource]
+      && (!virtual.subtractMetric || Array.isArray(state.points?.metrics?.[virtual.subtractMetric]))
+    );
+  }
   return Boolean(
     virtual
     && state.meta?.trace_sources?.[virtual.baseSource]
@@ -450,6 +549,13 @@ function ensureValidActiveTraceSource() {
   const available = getAvailableTraceSourceKeys();
   if (available.length && !available.includes(state.activeSignalSource)) {
     state.activeSignalSource = available[0];
+  }
+}
+
+function ensureValidActiveTraceValueMode() {
+  const available = getAvailableTraceValueModes(state.activeSignalSource);
+  if (available.length && !available.includes(state.activeTraceValueMode)) {
+    state.activeTraceValueMode = available[0];
   }
 }
 

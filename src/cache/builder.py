@@ -16,6 +16,7 @@ from ..cnmfe.cnmf import (
 from ..cnmfe.traces import TRACE_SOURCE_FILES, trace_sources
 
 from .background_cache import write_background_cache
+from .dff_cache import DFF_MIN_BASELINE_ABS, YBG_PROJECTION_SOURCE_KEY, write_ybg_projection_trace_cache
 from .manifest import BACKGROUND_DIRNAME, CACHE_VERSION, METADATA_FILE_NAME, POINTS_FILE_NAME, source_signature
 from .points import build_points_payload, write_points
 from .profile import build_profile
@@ -60,6 +61,13 @@ def build_cache(
     trace_stats_by_source = {}
     for source_key, traces in trace_sources(cnm).items():
         trace_stats_by_source.update(write_trace_cache(cache_root, source_key, traces))
+    trace_stats_by_source.update(
+        write_ybg_projection_trace_cache(
+            cnm=cnm,
+            mmap_load_path=mmap_path,
+            cache_save_fold=cache_root,
+        )
+    )
 
     points_payload = build_points_payload(
         a_csc=spatial_matrix(cnm),
@@ -105,6 +113,18 @@ def build_cache(
                 "description": "CNMF-E fitted temporal trace plus YrA residual",
                 "dtype": "float32",
             },
+            YBG_PROJECTION_SOURCE_KEY: {
+                "file": TRACE_SOURCE_FILES[YBG_PROJECTION_SOURCE_KEY],
+                "label": "projected Ybg",
+                "description": "CNMF-E ring background projected into each neuron's trace space",
+                "dtype": "float32",
+            },
+        },
+        "dff": {
+            "projection_source": YBG_PROJECTION_SOURCE_KEY,
+            "baseline_method": "median",
+            "min_baseline_abs": float(DFF_MIN_BASELINE_ABS),
+            "description": "DF/F is computed in the browser with MATLAB CNMF-E style: C - bl or C - bl + YrA divided by the median of projected Ybg.",
         },
         "points_file": POINTS_FILE_NAME,
         "backgrounds": background_specs,

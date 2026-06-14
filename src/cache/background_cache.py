@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from ..cnmfe.background import imagej_auto_contrast_uint8, imagej_bandpass, std_projection_from_mmap
+from ..cnmfe.background import imagej_auto_contrast_uint8, imagej_bandpass, mean_std_projection_from_mmap
 
 from .manifest import BACKGROUND_DIRNAME
 
@@ -45,17 +45,31 @@ def write_background_cache(
     (root / BACKGROUND_DIRNAME).mkdir(parents=True, exist_ok=True)
 
     source = Path(mmap_load_path).expanduser().resolve()
-    std_image = std_projection_from_mmap(source, height=height, width=width, trace_length=trace_length)
+    mean_image, std_image = mean_std_projection_from_mmap(
+        source,
+        height=height,
+        width=width,
+        trace_length=trace_length,
+    )
     bandpass_image = imagej_bandpass(std_image)
 
     return [
+        _write_background_png(
+            root=root,
+            file_name="mean.png",
+            image=mean_image,
+            source=source,
+            key="mean",
+            label="Mean",
+            transform="mean_projection",
+        ),
         _write_background_png(
             root=root,
             file_name="std.png",
             image=std_image,
             source=source,
             key="std",
-            label=f"{source.stem} STD",
+            label="STD",
             transform="std_projection",
         ),
         _write_background_png(
@@ -64,7 +78,7 @@ def write_background_cache(
             image=bandpass_image,
             source=source,
             key="bandpass",
-            label=f"{source.stem} STD bandpass",
+            label="STD + Bandpass",
             transform="std_projection_imagej_bandpass",
         ),
     ]

@@ -139,8 +139,21 @@ function buildRegionTraces() {
 }
 
 function buildMapLayout() {
-  const background = state.meta.backgrounds.find((bg) => bg.key === state.meta.default_background_key) ?? state.meta.backgrounds[0];
+  const background = getActiveBackground();
   const { xRange, yRange } = state.mapViewRange ?? computeMapCoverRanges();
+  const images = background ? [{
+    source: `/cache/${background.file}`,
+    xref: "x",
+    yref: "y",
+    x: 0,
+    y: state.meta.full_height,
+    sizex: state.meta.full_width,
+    sizey: state.meta.full_height,
+    sizing: "stretch",
+    yanchor: "bottom",
+    layer: "below",
+    opacity: 1,
+  }] : [];
   return {
     margin: { l: 0, r: 0, t: 0, b: 0 },
     height: computeMapHeight(),
@@ -155,19 +168,7 @@ function buildMapLayout() {
       scaleanchor: "x",
       scaleratio: 1,
     },
-    images: [{
-      source: `/cache/${background.file}`,
-      xref: "x",
-      yref: "y",
-      x: 0,
-      y: state.meta.full_height,
-      sizex: state.meta.full_width,
-      sizey: state.meta.full_height,
-      sizing: "stretch",
-      yanchor: "bottom",
-      layer: "below",
-      opacity: 1,
-    }],
+    images,
     paper_bgcolor: "#000",
     plot_bgcolor: "#000",
     dragmode: "pan",

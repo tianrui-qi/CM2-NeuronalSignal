@@ -176,6 +176,43 @@
   display: none;
 }
 
+.background-card {
+  gap: var(--space-3);
+}
+
+.background-options {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(118px, 1.4fr);
+  gap: var(--space-2);
+}
+
+.background-option {
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius);
+  background: var(--surface-control);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.background-option:hover {
+  background: var(--surface-control-hover);
+  color: var(--text);
+}
+
+.background-option.is-active {
+  border-color: var(--border-strong);
+  background: var(--surface-active);
+  color: var(--text);
+}
+
 .source-panel {
   flex: 0 0 auto;
   padding: 0;

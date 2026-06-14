@@ -6,7 +6,10 @@ async function init() {
     state.points = points;
     rebuildPointIndex();
     state.tracesBySource = tracesBySource;
+    state.dffDenominatorCache.clear();
+    state.traceDisplayStatsCache.clear();
     loadUiState();
+    ensureValidActiveBackgroundKey();
     ensureValidActiveTraceSource();
     ensureValidActiveBlueprintMetric();
     ensureValidQcRanges();

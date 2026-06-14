@@ -9,17 +9,7 @@ async function loadCache() {
   const meta = await metaResponse.json();
   const points = await pointsResponse.json();
   const expected = meta.neuron_count * meta.trace_length;
-  const physicalSourceKeys = new Set();
-  for (const sourceKey of TRACE_SOURCE_ORDER) {
-    if (meta.trace_sources?.[sourceKey]) {
-      physicalSourceKeys.add(sourceKey);
-      continue;
-    }
-    const virtual = TRACE_VIRTUAL_SOURCES[sourceKey];
-    if (virtual && meta.trace_sources?.[virtual.baseSource]) {
-      physicalSourceKeys.add(virtual.baseSource);
-    }
-  }
+  const physicalSourceKeys = new Set(Object.keys(meta.trace_sources ?? {}));
   const traceEntries = Array.from(physicalSourceKeys)
     .map((sourceKey) => [sourceKey, meta.trace_sources[sourceKey]]);
   const tracePayloads = await Promise.all(traceEntries.map(async ([sourceKey, traceSpec]) => {

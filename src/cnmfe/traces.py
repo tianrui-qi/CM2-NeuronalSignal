@@ -11,6 +11,7 @@ from .cnmf import baseline_values, fitted_traces, load_cnmf, residual_traces
 TRACE_SOURCE_FILES = {
     "c": "traces_c.float32.bin",
     "c_plus_yra": "traces_c_plus_yra.float32.bin",
+    "ybg_projection": "traces_ybg_projection.float32.bin",
 }
 
 
@@ -37,10 +38,10 @@ def trace_source(cnm: Any, source: str) -> np.ndarray:
 def trace_stats(traces: np.ndarray) -> dict[str, np.ndarray]:
     traces = np.asarray(traces, dtype=np.float32)
     return {
-        "mean": traces.mean(axis=1, dtype=np.float64).astype(np.float32),
-        "std": traces.std(axis=1, dtype=np.float64).astype(np.float32),
-        "p05": np.percentile(traces, 5.0, axis=1).astype(np.float32),
-        "p95": np.percentile(traces, 95.0, axis=1).astype(np.float32),
+        "mean": np.nanmean(traces, axis=1, dtype=np.float64).astype(np.float32),
+        "std": np.nanstd(traces, axis=1, dtype=np.float64).astype(np.float32),
+        "p05": np.nanpercentile(traces, 5.0, axis=1).astype(np.float32),
+        "p95": np.nanpercentile(traces, 95.0, axis=1).astype(np.float32),
     }
 
 

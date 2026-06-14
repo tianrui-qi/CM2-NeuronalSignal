@@ -12,7 +12,7 @@ Profiling note from 2026-06-13 on the development workstation:
 - Writer layout: CaImAn-compatible float32 mmap with rows ordered as
   pixels x frames. Output filename encodes ``d1/d2/d3/order/frames`` so
   CaImAn can recover shape directly from the name.
-- Algorithm: stream the TIFF by column blocks, subtract a tiny positive
+- Algorithm: stream the TIFF by column blocks, add a tiny positive
   offset, transpose each block to pixel-major order, and write into the
   final row offsets. This avoids materializing the full movie in Python.
 - The earlier writable-numpy-memmap prototype grew to about 5 GiB RSS in

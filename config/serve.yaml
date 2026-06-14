@@ -1,5 +1,5 @@
-web_dir: web
-cache_load_fold: data/cache/Y/
+web_dir: web/
+cache_load_fold: data/cache/Y-corr85-pnr12/
 host: 127.0.0.1
 port: 8765
 debug: false

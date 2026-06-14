@@ -111,22 +111,41 @@ function getVisiblePointIndices() {
     ));
 }
 
-function renderSourceToggle(containerId, activeSourceKey, onSelect) {
+function renderSegmentedToggle(containerId, keys, labels, activeKey, onSelect) {
   const container = document.getElementById(containerId);
   container.innerHTML = "";
-  const available = getAvailableTraceSourceKeys();
-  if (available.length <= 1) {
+  if (keys.length <= 1) {
     container.style.display = "none";
     return;
   }
   container.style.display = "inline-flex";
-  for (const sourceKey of available) {
+  for (const key of keys) {
     const button = document.createElement("button");
-    button.className = `trace-source-btn${sourceKey === activeSourceKey ? " active" : ""}`;
-    button.textContent = TRACE_SOURCE_UI_LABELS[sourceKey] ?? sourceKey;
-    button.addEventListener("click", () => onSelect(sourceKey));
+    button.className = `trace-source-btn${key === activeKey ? " active" : ""}`;
+    button.textContent = labels[key] ?? key;
+    button.addEventListener("click", () => onSelect(key));
     container.appendChild(button);
   }
+}
+
+function renderSourceToggle(containerId, activeSourceKey, onSelect) {
+  renderSegmentedToggle(
+    containerId,
+    getAvailableTraceSourceKeys(),
+    TRACE_SOURCE_UI_LABELS,
+    activeSourceKey,
+    onSelect
+  );
+}
+
+function renderTraceValueToggle(containerId, activeValueMode, onSelect) {
+  renderSegmentedToggle(
+    containerId,
+    getAvailableTraceValueModes(),
+    TRACE_VALUE_MODE_UI_LABELS,
+    activeValueMode,
+    onSelect
+  );
 }
 
 function getBlueprintMetricLabel(metricKey) {

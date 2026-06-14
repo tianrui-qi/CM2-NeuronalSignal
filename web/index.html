@@ -13,6 +13,16 @@
 
     <aside class="overlay-stack">
       <div id="workflow-panel" class="workflow-panel">
+        <section id="background-section" class="glass-panel workflow-section" data-workflow-section="background">
+          <button class="workflow-section-header" type="button" data-section-toggle="background">
+            <span>Background</span>
+            <span id="background-section-summary" class="workflow-section-summary"></span>
+          </button>
+          <div class="workflow-section-body background-card">
+            <div id="background-options" class="background-options" role="group" aria-label="Background"></div>
+          </div>
+        </section>
+
         <section id="qc-section" class="glass-panel workflow-section" data-workflow-section="qc">
           <button class="workflow-section-header" type="button" data-section-toggle="qc">
             <span>Quality Control</span>
@@ -74,25 +84,26 @@
 
         <section id="trace-section" class="glass-panel workflow-section" data-workflow-section="trace">
           <button class="workflow-section-header" type="button" data-section-toggle="trace">
-            <span>Trace</span>
+            <span>Temporal</span>
             <span id="trace-section-summary" class="workflow-section-summary"></span>
           </button>
           <div class="workflow-section-body trace-section-body">
-            <div class="source-panel">
+            <div class="source-panel temporal-toggle-row">
               <div id="shared-source-toggle" class="trace-source-toggle"></div>
+              <div id="shared-value-toggle" class="trace-source-toggle"></div>
             </div>
-
-            <section class="plot-panel trace-plot-panel">
-              <div class="plot-scroll trace-plot-scroll">
-                <div id="c-trace-plot" class="plot-frame"></div>
-              </div>
-            </section>
 
             <section class="plot-panel heatmap-plot-panel">
               <div class="plot-scroll heatmap-plot-scroll">
                 <div id="c-heatmap-plot" class="plot-frame"></div>
               </div>
               <div id="heatmap-colorbar" class="heatmap-colorbar hidden"></div>
+            </section>
+
+            <section class="plot-panel trace-plot-panel">
+              <div class="plot-scroll trace-plot-scroll">
+                <div id="c-trace-plot" class="plot-frame"></div>
+              </div>
             </section>
           </div>
         </section>

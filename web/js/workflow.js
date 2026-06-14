@@ -1,4 +1,9 @@
 function renderWorkflowSummaries() {
+  const backgroundSummary = document.getElementById("background-section-summary");
+  if (backgroundSummary) {
+    backgroundSummary.textContent = getActiveBackground()?.label ?? "";
+  }
+
   const regionSummary = document.getElementById("region-section-summary");
   if (regionSummary) {
     regionSummary.textContent = "";
@@ -11,12 +16,31 @@ function renderWorkflowSummaries() {
 
   const roiSummary = document.getElementById("roi-section-summary");
   if (roiSummary) {
-    roiSummary.textContent = "";
+    roiSummary.textContent = getRoiById(state.activeRoiId)?.name ?? "";
   }
 
   const traceSummary = document.getElementById("trace-section-summary");
   if (traceSummary) {
     traceSummary.textContent = "";
+  }
+}
+
+function renderBackgroundControl() {
+  const container = document.getElementById("background-options");
+  if (!container) {
+    return;
+  }
+  const activeKey = normalizeBackgroundKey(state.activeBackgroundKey);
+  container.replaceChildren();
+  for (const background of getAvailableBackgrounds()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "background-option";
+    button.classList.toggle("is-active", background.key === activeKey);
+    button.textContent = background.label ?? background.key;
+    button.setAttribute("aria-pressed", String(background.key === activeKey));
+    button.addEventListener("click", () => setActiveBackgroundKey(background.key));
+    container.appendChild(button);
   }
 }
 
@@ -39,6 +63,7 @@ function renderWorkflowChrome() {
 
 function renderWorkflowSections({ includeMap = true, includePlots = true } = {}) {
   renderWorkflowChrome();
+  renderBackgroundControl();
   renderRegionList();
   renderBlueprintControl();
   if (state.openSections.qc) {

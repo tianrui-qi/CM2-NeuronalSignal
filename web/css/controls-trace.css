@@ -4,9 +4,8 @@
   padding-left: var(--space-5);
 }
 
-.heatmap-plot-panel {
+.trace-plot-panel {
   padding-top: var(--space-5);
-  border-top: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .heatmap-colorbar {
@@ -14,7 +13,7 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   margin-top: var(--space-3);
-  margin-left: calc(var(--trace-strip-width, 5px) + var(--trace-strip-gap, 2px));
+  margin-left: 0;
 }
 
 .heatmap-colorbar.hidden {
@@ -54,6 +53,12 @@
   font-size: var(--font-size-sm);
 }
 
+.temporal-toggle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+  gap: var(--space-3);
+}
+
 .trace-source-toggle {
   display: inline-flex;
   width: 100%;
@@ -78,4 +83,10 @@
 
 .trace-source-btn.active {
   background: var(--surface-active, rgba(255, 248, 239, 0.2));
+}
+
+@media (max-width: 520px) {
+  .temporal-toggle-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
