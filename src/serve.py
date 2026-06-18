@@ -5,6 +5,8 @@ from pathlib import Path
 
 from flask import Flask, abort, send_file, send_from_directory
 
+from .cache.validators import validate_cache
+
 
 def create_app(*, web_dir: str | Path, cache_load_fold: str | Path) -> Flask:
     web_root = Path(web_dir).expanduser().resolve()
@@ -48,9 +50,10 @@ def create_app(*, web_dir: str | Path, cache_load_fold: str | Path) -> Flask:
 
     @app.route("/health")
     def health():
-        metadata_path = cache_root / "metadata.json"
-        if not metadata_path.is_file():
-            abort(503, description="Viewer cache is missing.")
+        try:
+            validate_cache(cache_root)
+        except (FileNotFoundError, ValueError) as error:
+            abort(503, description=str(error))
         return {"ok": True}
 
     return app
@@ -65,7 +68,6 @@ def serve(
     debug: bool = False,
 ) -> None:
     cache_root = Path(cache_load_fold).expanduser().resolve()
-    if not (cache_root / "metadata.json").is_file():
-        raise FileNotFoundError(f"Viewer cache is missing: {cache_root / 'metadata.json'}")
+    validate_cache(cache_root)
     app = create_app(web_dir=web_dir, cache_load_fold=cache_root)
     app.run(host=host, port=port, debug=debug)

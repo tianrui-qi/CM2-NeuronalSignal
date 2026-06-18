@@ -10,7 +10,8 @@ function buildMapMarkerStyle(pointIndices) {
     const neuronId = state.points.id[pointIndex];
     const roiId = findAssignedRoiId(neuronId);
     const assignedRoi = roiId ? getRoiById(roiId) : null;
-    const roi = assignedRoi && pointIndexInRoiBox(pointIndex, assignedRoi) ? assignedRoi : null;
+    const showRoiStyle = state.traceHoverNeuronId === null || state.traceHoverNeuronId === neuronId;
+    const roi = showRoiStyle && assignedRoi && pointIndexInRoiBox(pointIndex, assignedRoi) ? assignedRoi : null;
     if (!blueprintSpec) {
       fill.push(roi ? roi.color : UNASSIGNED_POINT_COLOR);
       line.push(roi ? "rgba(20,16,12,0.75)" : UNASSIGNED_LINE_COLOR);
@@ -67,6 +68,87 @@ function buildRoiBoxShapes() {
       },
       layer: "above",
     }));
+}
+
+const ROI_BOX_BORDER_CLICK_TOLERANCE_PX = 8;
+
+function axisDataToPlotPixel(axis, value) {
+  if (!axis || typeof axis.d2p !== "function") {
+    return null;
+  }
+  const pixel = axis.d2p(value);
+  return Number.isFinite(pixel) ? pixel + (axis._offset ?? 0) : null;
+}
+
+function findRoiBoxBorderHit(event) {
+  const plotDiv = document.getElementById("map-plot");
+  const xaxis = plotDiv?._fullLayout?.xaxis;
+  const yaxis = plotDiv?._fullLayout?.yaxis;
+  if (!plotDiv || !xaxis || !yaxis) {
+    return null;
+  }
+
+  const rect = plotDiv.getBoundingClientRect();
+  const eventX = event.clientX - rect.left;
+  const eventY = event.clientY - rect.top;
+  let bestHit = null;
+
+  for (const roi of state.rois) {
+    if (!roi.box) {
+      continue;
+    }
+    const x0 = axisDataToPlotPixel(xaxis, roi.box.x);
+    const x1 = axisDataToPlotPixel(xaxis, roi.box.x + roi.box.width);
+    const y0 = axisDataToPlotPixel(yaxis, roi.box.y);
+    const y1 = axisDataToPlotPixel(yaxis, roi.box.y + roi.box.height);
+    if ([x0, x1, y0, y1].some((value) => value === null)) {
+      continue;
+    }
+
+    const left = Math.min(x0, x1);
+    const right = Math.max(x0, x1);
+    const top = Math.min(y0, y1);
+    const bottom = Math.max(y0, y1);
+    const tolerance = ROI_BOX_BORDER_CLICK_TOLERANCE_PX;
+    const withinBoxBand = (
+      eventX >= left - tolerance
+      && eventX <= right + tolerance
+      && eventY >= top - tolerance
+      && eventY <= bottom + tolerance
+    );
+    if (!withinBoxBand) {
+      continue;
+    }
+
+    const distance = Math.min(
+      Math.abs(eventX - left),
+      Math.abs(eventX - right),
+      Math.abs(eventY - top),
+      Math.abs(eventY - bottom)
+    );
+    if (distance <= tolerance && (!bestHit || distance < bestHit.distance)) {
+      bestHit = { roiId: roi.id, distance };
+    }
+  }
+
+  return bestHit?.roiId ?? null;
+}
+
+function handleRoiBoxBorderClick(event) {
+  if (
+    state.regionDraft.active
+    || event.target?.closest?.(".modebar")
+    || event.target?.closest?.(".overlay-stack")
+  ) {
+    return;
+  }
+  const roiId = findRoiBoxBorderHit(event);
+  if (!roiId) {
+    return;
+  }
+  setActiveRoi(roiId);
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 function buildRegionTraces() {
@@ -218,6 +300,7 @@ function renderMap() {
       plotDiv.on("plotly_relayout", () => {
         requestAnimationFrame(rememberCurrentMapViewRange);
       });
+      plotDiv.addEventListener("click", handleRoiBoxBorderClick, true);
       plotDiv.on("plotly_click", (event) => {
         if (state.regionDraft.active) {
           return;

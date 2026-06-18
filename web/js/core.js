@@ -46,8 +46,15 @@ const TRACE_VIRTUAL_SOURCES = {
   dff_c_bl: { baseSource: "c", subtractMetric: "bl", dffProjectionSource: DFF_PROJECTION_SOURCE_KEY },
   dff_c_bl_plus_yra: { baseSource: "c_plus_yra", subtractMetric: "bl", dffProjectionSource: DFF_PROJECTION_SOURCE_KEY },
 };
-const WORKFLOW_SECTIONS = ["background", "qc", "region", "roi", "trace"];
-const DEFAULT_OPEN_SECTIONS = { background: true, qc: true, region: true, roi: true, trace: true };
+const WORKFLOW_SECTIONS = ["background", "qc", "region", "roi", "temporalHeatmap", "temporalTrace"];
+const DEFAULT_OPEN_SECTIONS = {
+  background: true,
+  qc: true,
+  region: true,
+  roi: true,
+  temporalHeatmap: true,
+  temporalTrace: true,
+};
 const BLUEPRINT_NONE = "none";
 const BLUEPRINT_COLOR_SCALE = "RdBu";
 const BLUEPRINT_SIGMA_RANGE = 3;
@@ -62,6 +69,14 @@ const QC_SLIDER_MAX = Math.round((QC_RANGE_MAX_Z - QC_RANGE_MIN_Z) * QC_SLIDER_U
 const OVERLAY_WIDTH_MIN = 340;
 const OVERLAY_WIDTH_MAX = 720;
 const OVERLAY_VIEWPORT_MARGIN = 72;
+const TRACE_DFF_SPACING_PERCENT_MIN = 5;
+const TRACE_DFF_SPACING_PERCENT_MAX = 20;
+const TRACE_DFF_SPACING_PERCENT_STEP = 1;
+const TRACE_DFF_SPACING_PERCENT_DEFAULT = 10;
+const TRACE_DFF_PIXELS_PER_PERCENT_MIN = 1;
+const TRACE_DFF_PIXELS_PER_PERCENT_MAX = 12;
+const TRACE_DFF_PIXELS_PER_PERCENT_STEP = 0.5;
+const TRACE_DFF_PIXELS_PER_PERCENT_DEFAULT = 5;
 const REGION_LINE_COLOR = "rgba(247,241,231,0.95)";
 const REGION_DRAFT_COLOR = "rgba(80,190,230,0.95)";
 const BLUEPRINT_METRIC_SPECS = [
@@ -85,8 +100,11 @@ const state = {
   activeRoiId: null,
   activeSignalSource: "c_bl",
   activeTraceValueMode: "df",
+  traceDffSpacingPercent: TRACE_DFF_SPACING_PERCENT_DEFAULT,
+  traceDffPixelsPerPercent: TRACE_DFF_PIXELS_PER_PERCENT_DEFAULT,
+  traceHoverNeuronId: null,
   dffDenominatorCache: new Map(),
-  traceDisplayStatsCache: new Map(),
+  heatmapRangeBySource: {},
   activeBackgroundKey: null,
   activeBlueprintMetric: BLUEPRINT_NONE,
   qcRanges: {},
@@ -231,6 +249,24 @@ function activateRoi(roiId) {
   refreshRoiViews({ includePlots: true });
 }
 
+function setActiveRoi(roiId) {
+  const roi = getRoiById(roiId);
+  if (!roi || state.activeRoiId === roi.id) {
+    return;
+  }
+  state.activeRoiId = roi.id;
+  refreshRoiViews({ includePlots: true });
+}
+
+function setTraceHoverNeuronId(neuronId) {
+  const nextNeuronId = Number.isFinite(neuronId) ? Number(neuronId) : null;
+  if (state.traceHoverNeuronId === nextNeuronId) {
+    return;
+  }
+  state.traceHoverNeuronId = nextNeuronId;
+  renderMap();
+}
+
 function addRoiWithColor(color, { box = null } = {}) {
   const roi = makeRoi(null, color);
   roi.box = normalizeRoiBox(box);
@@ -339,6 +375,10 @@ function normalizeOpenSections(openSections) {
   if (typeof openSections.boundary === "boolean") {
     normalized.region = openSections.boundary;
   }
+  if (typeof openSections.trace === "boolean") {
+    normalized.temporalHeatmap = openSections.trace;
+    normalized.temporalTrace = openSections.trace;
+  }
   for (const section of WORKFLOW_SECTIONS) {
     if (typeof openSections[section] === "boolean") {
       normalized[section] = openSections[section];
@@ -347,9 +387,86 @@ function normalizeOpenSections(openSections) {
   return normalized;
 }
 
-function normalizeWorkflowSection(section, fallback = "trace") {
+function normalizeHeatmapRangeBySource(value, legacyMaxBySource = null) {
+  const normalized = {};
+  if (value && typeof value === "object") {
+    for (const [sourceKey, sourceRange] of Object.entries(value)) {
+      if (typeof sourceKey !== "string") {
+        continue;
+      }
+      if (sourceRange && typeof sourceRange === "object") {
+        const min = Number(sourceRange.min);
+        const max = Number(sourceRange.max);
+        const nextRange = {};
+        if (Number.isFinite(min)) {
+          nextRange.min = min;
+        }
+        if (Number.isFinite(max)) {
+          nextRange.max = max;
+        }
+        if (Object.keys(nextRange).length) {
+          normalized[sourceKey] = nextRange;
+        }
+        continue;
+      }
+      const legacyMax = Number(sourceRange);
+      if (Number.isFinite(legacyMax)) {
+        normalized[sourceKey] = { max: legacyMax };
+      }
+    }
+  }
+
+  if (legacyMaxBySource && typeof legacyMaxBySource === "object") {
+    for (const [sourceKey, sourceMax] of Object.entries(legacyMaxBySource)) {
+      const numericMax = Number(sourceMax);
+      if (typeof sourceKey === "string" && Number.isFinite(numericMax)) {
+        normalized[sourceKey] = {
+          ...(normalized[sourceKey] ?? {}),
+          max: normalized[sourceKey]?.max ?? numericMax,
+        };
+      }
+    }
+  }
+  return normalized;
+}
+
+function normalizeTraceControlValue(value, fallback, min, max, step) {
+  const numericValue = Number(value);
+  const numericFallback = Number.isFinite(fallback) ? fallback : min;
+  const scalar = Number.isFinite(numericValue) ? numericValue : numericFallback;
+  const stepped = Math.round(scalar / step) * step;
+  return Number(clamp(stepped, min, max).toFixed(2));
+}
+
+function normalizeTraceDffSpacingPercent(value, fallback = TRACE_DFF_SPACING_PERCENT_DEFAULT) {
+  return normalizeTraceControlValue(
+    value,
+    fallback,
+    TRACE_DFF_SPACING_PERCENT_MIN,
+    TRACE_DFF_SPACING_PERCENT_MAX,
+    TRACE_DFF_SPACING_PERCENT_STEP
+  );
+}
+
+function normalizeTraceDffPixelsPerPercent(value, fallback = TRACE_DFF_PIXELS_PER_PERCENT_DEFAULT) {
+  return normalizeTraceControlValue(
+    value,
+    fallback,
+    TRACE_DFF_PIXELS_PER_PERCENT_MIN,
+    TRACE_DFF_PIXELS_PER_PERCENT_MAX,
+    TRACE_DFF_PIXELS_PER_PERCENT_STEP
+  );
+}
+
+function normalizeWorkflowSection(section, fallback = "temporalTrace") {
   if (WORKFLOW_SECTIONS.includes(section)) {
     return section;
+  }
+  if (section === "trace") {
+    return "temporalTrace";
+  }
+  if (section === "heatmap" || section === "temporal") {
+    return "temporalHeatmap";
   }
   if (section === "footprint") {
     return "qc";
@@ -368,6 +485,9 @@ function saveUiState() {
       activeRoiId: null,
       activeSignalSource: state.activeSignalSource,
       activeTraceValueMode: state.activeTraceValueMode,
+      traceDffSpacingPercent: state.traceDffSpacingPercent,
+      traceDffPixelsPerPercent: state.traceDffPixelsPerPercent,
+      heatmapRangeBySource: state.heatmapRangeBySource,
       activeBackgroundKey: state.activeBackgroundKey,
       activeBlueprintMetric: state.activeBlueprintMetric,
       qcRanges: state.qcRanges,
@@ -413,6 +533,22 @@ function loadUiState() {
     if (isTraceValueModeAvailable(parsed.activeTraceValueMode, state.activeSignalSource)) {
       state.activeTraceValueMode = parsed.activeTraceValueMode;
     }
+    state.traceDffSpacingPercent = normalizeTraceDffSpacingPercent(
+      parsed.traceDffSpacingPercent,
+      Number.isFinite(Number(parsed.traceDffRowUnits))
+        ? Number(parsed.traceDffRowUnits) * 5
+        : TRACE_DFF_SPACING_PERCENT_DEFAULT
+    );
+    state.traceDffPixelsPerPercent = normalizeTraceDffPixelsPerPercent(
+      parsed.traceDffPixelsPerPercent,
+      Number.isFinite(Number(parsed.traceDffUnitScale))
+        ? Number(parsed.traceDffUnitScale) * TRACE_DFF_PIXELS_PER_PERCENT_DEFAULT
+        : TRACE_DFF_PIXELS_PER_PERCENT_DEFAULT
+    );
+    state.heatmapRangeBySource = normalizeHeatmapRangeBySource(
+      parsed.heatmapRangeBySource,
+      parsed.heatmapMaxBySource
+    );
     state.activeBackgroundKey = normalizeBackgroundKey(parsed.activeBackgroundKey);
     if (isAvailableBlueprintMetric(parsed.activeBlueprintMetric)) {
       state.activeBlueprintMetric = parsed.activeBlueprintMetric;

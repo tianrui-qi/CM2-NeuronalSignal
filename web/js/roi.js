@@ -331,6 +331,9 @@ function renderRoiWorkflowPanel() {
       label: `Clear ${roi.name} neurons`,
       disabled: roi.neuronIds.length === 0,
       onClick: () => {
+        if (typeof setTraceSortCustom === "function") {
+          setTraceSortCustom();
+        }
         roi.neuronIds = [];
         refreshRoiViews({ includePlots: true });
       },

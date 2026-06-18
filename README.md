@@ -32,3 +32,5 @@ python -m script.serve
 ```
 
 `script/serve.py` only serves existing cache files. Rebuild cache explicitly with `script/cache.py`.
+
+For viewer internals, cache contracts, and smoke checks, see `web/ARCHITECTURE.md`.

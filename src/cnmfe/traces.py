@@ -6,13 +6,7 @@ from typing import Any
 import numpy as np
 
 from .cnmf import baseline_values, fitted_traces, load_cnmf, residual_traces
-
-
-TRACE_SOURCE_FILES = {
-    "c": "traces_c.float32.bin",
-    "c_plus_yra": "traces_c_plus_yra.float32.bin",
-    "ybg_projection": "traces_ybg_projection.float32.bin",
-}
+from ..cache.manifest import TRACE_SOURCE_FILES
 
 
 def trace_sources(cnm: Any) -> dict[str, np.ndarray]:

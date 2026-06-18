@@ -19,10 +19,16 @@ function renderWorkflowSummaries() {
     roiSummary.textContent = getRoiById(state.activeRoiId)?.name ?? "";
   }
 
-  const traceSummary = document.getElementById("trace-section-summary");
-  if (traceSummary) {
-    traceSummary.textContent = "";
+  for (const summaryId of ["temporal-heatmap-section-summary", "temporal-trace-section-summary"]) {
+    const summary = document.getElementById(summaryId);
+    if (summary) {
+      summary.textContent = "";
+    }
   }
+}
+
+function isTemporalWorkflowSection(section) {
+  return section === "temporalHeatmap" || section === "temporalTrace";
 }
 
 function renderBackgroundControl() {
@@ -70,7 +76,7 @@ function renderWorkflowSections({ includeMap = true, includePlots = true } = {})
     renderBlueprintStats();
   }
   renderRoiWorkflowPanel();
-  if (includePlots && state.openSections.trace) {
+  if (includePlots && (state.openSections.temporalHeatmap || state.openSections.temporalTrace)) {
     updatePlots();
   }
   schedulePanelPlotResize();
@@ -99,7 +105,7 @@ function toggleWorkflowSection(section) {
   state.activeWorkflowSection = next;
   state.openSections[next] = !state.openSections[next];
   saveUiState();
-  renderWorkflowSections({ includeMap: true, includePlots: next === "trace" });
+  renderWorkflowSections({ includeMap: true, includePlots: isTemporalWorkflowSection(next) });
 }
 
 function syncActiveWorkflowFromScroll() {
@@ -124,7 +130,7 @@ function syncActiveWorkflowFromScroll() {
   if (bestSection !== state.activeWorkflowSection) {
     state.activeWorkflowSection = bestSection;
     saveUiState();
-    renderWorkflowSections({ includeMap: true, includePlots: bestSection === "trace" });
+    renderWorkflowSections({ includeMap: true, includePlots: isTemporalWorkflowSection(bestSection) });
   }
 }
 
@@ -143,8 +149,14 @@ function handleNeuronToggle(neuronId) {
     return;
   }
   if (currentRoiId === activeRoi.id) {
+    if (typeof setTraceSortCustom === "function") {
+      setTraceSortCustom();
+    }
     activeRoi.neuronIds = activeRoi.neuronIds.filter((id) => id !== neuronId);
   } else {
+    if (typeof setTraceSortCustom === "function") {
+      setTraceSortCustom();
+    }
     removeNeuronFromAllRois(neuronId);
     activeRoi.neuronIds = [...activeRoi.neuronIds, neuronId];
   }

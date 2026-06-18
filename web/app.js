@@ -7,7 +7,6 @@ async function init() {
     rebuildPointIndex();
     state.tracesBySource = tracesBySource;
     state.dffDenominatorCache.clear();
-    state.traceDisplayStatsCache.clear();
     loadUiState();
     ensureValidActiveBackgroundKey();
     ensureValidActiveTraceSource();

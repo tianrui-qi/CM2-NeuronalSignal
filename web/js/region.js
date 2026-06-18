@@ -35,10 +35,6 @@ function normalizeRegionPolygons(value) {
     .filter((polygon) => polygon.length >= 3);
 }
 
-function cloneRegionPolygons(polygons) {
-  return normalizeRegionPolygons(polygons).map((polygon) => polygon.map((point) => ({ ...point })));
-}
-
 function getCommittedRegionPolygons() {
   return normalizeRegionPolygons(state.regionPolygons);
 }
@@ -79,14 +75,6 @@ function normalizeRegionPreview(preview) {
 
 function getRegionPreview() {
   return normalizeRegionPreview(state.regionPreview);
-}
-
-function getRegionPreviewPolygon() {
-  const preview = getRegionPreview();
-  if (preview?.type !== "region") {
-    return null;
-  }
-  return getCommittedRegionPolygons()[preview.index] ?? null;
 }
 
 function getRegionPreviewKey(preview) {
@@ -211,10 +199,6 @@ function countRegionNeuronsForPolygons(polygons, { filters = null } = {}) {
     const y = state.points.y[pointIndex];
     return count + (polygons.some((polygon) => pointInPolygon(x, y, polygon)) ? 1 : 0);
   }, 0);
-}
-
-function countRegionNeurons() {
-  return countRegionNeuronsForPolygons(getCommittedRegionPolygons());
 }
 
 function countMetricQcNeurons(filters = getActiveQcFilters()) {

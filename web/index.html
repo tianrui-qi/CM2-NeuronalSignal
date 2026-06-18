@@ -82,27 +82,55 @@
           </div>
         </section>
 
-        <section id="trace-section" class="glass-panel workflow-section" data-workflow-section="trace">
-          <button class="workflow-section-header" type="button" data-section-toggle="trace">
-            <span>Temporal</span>
-            <span id="trace-section-summary" class="workflow-section-summary"></span>
+        <section id="temporal-heatmap-section" class="glass-panel workflow-section" data-workflow-section="temporalHeatmap">
+          <button class="workflow-section-header" type="button" data-section-toggle="temporalHeatmap">
+            <span>Temporal: Heatmap</span>
+            <span id="temporal-heatmap-section-summary" class="workflow-section-summary"></span>
           </button>
           <div class="workflow-section-body trace-section-body">
             <div class="source-panel temporal-toggle-row">
-              <div id="shared-source-toggle" class="trace-source-toggle"></div>
-              <div id="shared-value-toggle" class="trace-source-toggle"></div>
+              <div id="heatmap-source-toggle" class="trace-source-toggle"></div>
+              <div id="heatmap-value-toggle" class="trace-source-toggle"></div>
             </div>
+
+            <div id="heatmap-colorbar" class="heatmap-colorbar hidden"></div>
 
             <section class="plot-panel heatmap-plot-panel">
               <div class="plot-scroll heatmap-plot-scroll">
                 <div id="c-heatmap-plot" class="plot-frame"></div>
               </div>
-              <div id="heatmap-colorbar" class="heatmap-colorbar hidden"></div>
+              <div class="plot-download-row">
+                <button id="download-heatmap-svg-btn" class="mini-btn plot-download-btn" type="button">SVG</button>
+                <button id="download-heatmap-png-btn" class="mini-btn plot-download-btn" type="button">PNG</button>
+              </div>
             </section>
+          </div>
+        </section>
+
+        <section id="temporal-trace-section" class="glass-panel workflow-section" data-workflow-section="temporalTrace">
+          <button class="workflow-section-header" type="button" data-section-toggle="temporalTrace">
+            <span>Temporal: Trace</span>
+            <span id="temporal-trace-section-summary" class="workflow-section-summary"></span>
+          </button>
+          <div class="workflow-section-body trace-section-body">
+            <div class="source-panel temporal-toggle-row">
+              <div id="trace-source-toggle" class="trace-source-toggle"></div>
+              <div id="trace-value-toggle" class="trace-source-toggle"></div>
+            </div>
+
+            <div id="trace-operation-controls" class="trace-operation-controls hidden"></div>
+            <div id="trace-scale-controls" class="trace-scale-controls hidden"></div>
 
             <section class="plot-panel trace-plot-panel">
               <div class="plot-scroll trace-plot-scroll">
                 <div id="c-trace-plot" class="plot-frame"></div>
+              </div>
+              <div class="plot-download-row trace-download-row">
+                <button id="trace-select-all-btn" class="mini-btn trace-select-all-btn" type="button">Select All</button>
+                <div class="plot-download-actions">
+                  <button id="download-trace-svg-btn" class="mini-btn plot-download-btn" type="button">SVG</button>
+                  <button id="download-trace-png-btn" class="mini-btn plot-download-btn" type="button">PNG</button>
+                </div>
               </div>
             </section>
           </div>
@@ -116,6 +144,7 @@
 
   <script src="/vendor/plotly.min.js"></script>
   <script src="/js/core.js"></script>
+  <script src="/js/ui.js"></script>
   <script src="/js/region.js"></script>
   <script src="/js/qc.js"></script>
   <script src="/js/map.js"></script>
