@@ -107,6 +107,262 @@ const TRACE_DFF_THRESHOLD_COLOR = "rgba(255, 255, 255, 0.28)";
 const TRACE_DFF_THRESHOLD_LABEL = `${Math.round(TRACE_DFF_THRESHOLD_VALUE * 100)}%`;
 const HEATMAP_ROW_HEIGHT_PX = 0.8;
 const HEATMAP_PERCENT_SCALE = 100;
+const HEATMAP_COLORMAP_DEFAULT = "gray";
+const HEATMAP_COLORMAP_ORDER = [
+  "gray",
+  "viridis",
+  "cividis",
+  "magma",
+  "inferno",
+  "plasma",
+  "rocket",
+  "mako",
+  "crest",
+  "flare",
+  "batlow",
+  "thermal",
+  "haline",
+  "amber",
+  "ember",
+  "ocean",
+  "turbo",
+  "hot",
+  "teal",
+  "mint",
+  "electric",
+  "blackbody",
+];
+const HEATMAP_COLORMAPS = {
+  gray: {
+    label: "Gray",
+    colorscale: [
+      [0, "#000000"],
+      [1, "#ffffff"],
+    ],
+  },
+  viridis: {
+    label: "Viridis",
+    colorscale: [
+      [0, "#440154"],
+      [0.25, "#3b528b"],
+      [0.5, "#21918c"],
+      [0.75, "#5ec962"],
+      [1, "#fde725"],
+    ],
+  },
+  cividis: {
+    label: "Cividis",
+    colorscale: [
+      [0, "#00204c"],
+      [0.25, "#31446b"],
+      [0.5, "#666870"],
+      [0.75, "#a8955b"],
+      [1, "#ffea46"],
+    ],
+  },
+  magma: {
+    label: "Magma",
+    colorscale: [
+      [0, "#000004"],
+      [0.25, "#51127c"],
+      [0.5, "#b63679"],
+      [0.75, "#fb8861"],
+      [1, "#fcfdbf"],
+    ],
+  },
+  inferno: {
+    label: "Inferno",
+    colorscale: [
+      [0, "#000004"],
+      [0.25, "#57106e"],
+      [0.5, "#bc3754"],
+      [0.75, "#f98e09"],
+      [1, "#fcffa4"],
+    ],
+  },
+  plasma: {
+    label: "Plasma",
+    colorscale: [
+      [0, "#0d0887"],
+      [0.25, "#7e03a8"],
+      [0.5, "#cc4778"],
+      [0.75, "#f89540"],
+      [1, "#f0f921"],
+    ],
+  },
+  rocket: {
+    label: "Rocket",
+    colorscale: [
+      [0, "#03051a"],
+      [0.2, "#3f1b43"],
+      [0.4, "#8c1d5b"],
+      [0.6, "#cb1b4f"],
+      [0.8, "#f06043"],
+      [1, "#f6b48f"],
+    ],
+  },
+  mako: {
+    label: "Mako",
+    colorscale: [
+      [0, "#0b0405"],
+      [0.2, "#17314f"],
+      [0.4, "#17597a"],
+      [0.6, "#3b8496"],
+      [0.8, "#8ab8a7"],
+      [1, "#def5e5"],
+    ],
+  },
+  crest: {
+    label: "Crest",
+    colorscale: [
+      [0, "#082319"],
+      [0.2, "#174d3a"],
+      [0.4, "#287a5f"],
+      [0.6, "#49a982"],
+      [0.8, "#8fd1a5"],
+      [1, "#d7f2c2"],
+    ],
+  },
+  flare: {
+    label: "Flare",
+    colorscale: [
+      [0, "#2a0b32"],
+      [0.2, "#662d5c"],
+      [0.4, "#a34360"],
+      [0.6, "#d16458"],
+      [0.8, "#f1965b"],
+      [1, "#f6d08a"],
+    ],
+  },
+  batlow: {
+    label: "Batlow",
+    colorscale: [
+      [0, "#011959"],
+      [0.2, "#12436d"],
+      [0.4, "#257977"],
+      [0.6, "#7da85a"],
+      [0.8, "#d7c05a"],
+      [1, "#f9fb93"],
+    ],
+  },
+  thermal: {
+    label: "Thermal",
+    colorscale: [
+      [0, "#042333"],
+      [0.2, "#43328a"],
+      [0.4, "#b02a7c"],
+      [0.6, "#e85d3f"],
+      [0.8, "#f6b13b"],
+      [1, "#fff2a6"],
+    ],
+  },
+  haline: {
+    label: "Haline",
+    colorscale: [
+      [0, "#071330"],
+      [0.2, "#123c69"],
+      [0.4, "#176b8c"],
+      [0.6, "#1aa59a"],
+      [0.8, "#72d28c"],
+      [1, "#eef6a4"],
+    ],
+  },
+  amber: {
+    label: "Amber",
+    colorscale: [
+      [0, "#050301"],
+      [0.2, "#2f1202"],
+      [0.4, "#7a2c02"],
+      [0.6, "#c4570a"],
+      [0.8, "#f0a12b"],
+      [1, "#ffe59a"],
+    ],
+  },
+  ember: {
+    label: "Ember",
+    colorscale: [
+      [0, "#06000d"],
+      [0.2, "#2a073d"],
+      [0.4, "#65104c"],
+      [0.6, "#a51f39"],
+      [0.8, "#de5b2c"],
+      [1, "#ffd37a"],
+    ],
+  },
+  ocean: {
+    label: "Ocean",
+    colorscale: [
+      [0, "#020918"],
+      [0.2, "#06345a"],
+      [0.4, "#0b6f86"],
+      [0.6, "#12aaa1"],
+      [0.8, "#69d4bd"],
+      [1, "#d7fff2"],
+    ],
+  },
+  turbo: {
+    label: "Turbo",
+    colorscale: [
+      [0, "#30123b"],
+      [0.2, "#4145ab"],
+      [0.4, "#1ae4b6"],
+      [0.6, "#a4fc3c"],
+      [0.8, "#f66c19"],
+      [1, "#7a0403"],
+    ],
+  },
+  hot: {
+    label: "Hot",
+    colorscale: [
+      [0, "#000000"],
+      [0.33, "#b30000"],
+      [0.66, "#ffb300"],
+      [1, "#ffffff"],
+    ],
+  },
+  teal: {
+    label: "Teal",
+    colorscale: [
+      [0, "#001219"],
+      [0.25, "#005f73"],
+      [0.5, "#0a9396"],
+      [0.75, "#94d2bd"],
+      [1, "#e9d8a6"],
+    ],
+  },
+  mint: {
+    label: "Mint",
+    colorscale: [
+      [0, "#001b12"],
+      [0.25, "#0b5d3b"],
+      [0.5, "#1aa36f"],
+      [0.75, "#7be0ad"],
+      [1, "#edfff6"],
+    ],
+  },
+  electric: {
+    label: "Electric",
+    colorscale: [
+      [0, "#000000"],
+      [0.2, "#1b03a3"],
+      [0.4, "#0066ff"],
+      [0.6, "#00e5ff"],
+      [0.8, "#fff200"],
+      [1, "#ffffff"],
+    ],
+  },
+  blackbody: {
+    label: "Blackbody",
+    colorscale: [
+      [0, "#000000"],
+      [0.2, "#2b0000"],
+      [0.45, "#b30000"],
+      [0.7, "#ff8c00"],
+      [0.9, "#ffff66"],
+      [1, "#ffffff"],
+    ],
+  },
+};
 const TRACE_DESELECT_BUTTON_SIZE_PX = 20;
 const TRACE_DESELECT_BUTTON_INSET_PX = 8;
 const TRACE_SORT_CUSTOM_KEY = "custom";
@@ -1258,10 +1514,57 @@ function setHeatmapRangeForSource(sourceKey, zMin, zMax, nextRange) {
   return range;
 }
 
+function normalizeHeatmapColormapKey(colormapKey) {
+  return Object.prototype.hasOwnProperty.call(HEATMAP_COLORMAPS, colormapKey)
+    ? colormapKey
+    : HEATMAP_COLORMAP_DEFAULT;
+}
+
+function getHeatmapColormapSpec(colormapKey = state.activeHeatmapColormap) {
+  return HEATMAP_COLORMAPS[normalizeHeatmapColormapKey(colormapKey)]
+    ?? HEATMAP_COLORMAPS[HEATMAP_COLORMAP_DEFAULT];
+}
+
+function getHeatmapColorscale(colormapKey = state.activeHeatmapColormap) {
+  return getHeatmapColormapSpec(colormapKey).colorscale;
+}
+
+function cssPercent(value) {
+  return `${Number(value).toFixed(3).replace(/\.?0+$/, "")}%`;
+}
+
+function buildHeatmapColorbarGradient(colormapKey, minPercent, maxPercent) {
+  const colorscale = getHeatmapColorscale(colormapKey);
+  const firstColor = colorscale[0][1];
+  const lastColor = colorscale[colorscale.length - 1][1];
+  const low = clamp(minPercent, 0, 100);
+  const high = clamp(maxPercent, low + 0.001, 100);
+  const span = high - low;
+  const stops = [
+    `${firstColor} 0%`,
+    `${firstColor} ${cssPercent(low)}`,
+  ];
+  for (const [position, color] of colorscale) {
+    stops.push(`${color} ${cssPercent(low + clamp01(position) * span)}`);
+  }
+  stops.push(`${lastColor} ${cssPercent(high)}`);
+  stops.push(`${lastColor} 100%`);
+  return `linear-gradient(90deg, ${stops.join(", ")})`;
+}
+
+function renderHeatmapColormapOptions() {
+  return HEATMAP_COLORMAP_ORDER.map((key) => {
+    const spec = HEATMAP_COLORMAPS[key];
+    const selected = normalizeHeatmapColormapKey(state.activeHeatmapColormap) === key ? " selected" : "";
+    return `<option value="${key}"${selected}>${spec.label}</option>`;
+  }).join("");
+}
+
 function updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, activeRange) {
   if (!activeRange) {
     return;
   }
+  state.activeHeatmapColormap = normalizeHeatmapColormapKey(state.activeHeatmapColormap);
   const step = getHeatmapRangeStepValue(sourceKey, zMin, zMax);
   const minValue = snapHeatmapControlValue(sourceKey, clamp(activeRange.min, zMin, zMax - step));
   const maxValue = snapHeatmapControlValue(sourceKey, clamp(activeRange.max, minValue + step, zMax));
@@ -1269,10 +1572,14 @@ function updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, activeRange
   const maxFraction = clamp01((maxValue - zMin) / (zMax - zMin));
   const minPercent = minFraction * 100;
   const maxPercent = maxFraction * 100;
-  colorbar.querySelector(".heatmap-colorbar-track")
-    ?.style.setProperty("--heatmap-min-percent", `${minPercent}%`);
-  colorbar.querySelector(".heatmap-colorbar-track")
-    ?.style.setProperty("--heatmap-max-percent", `${maxPercent}%`);
+  const track = colorbar.querySelector(".heatmap-colorbar-track");
+  if (track) {
+    track.style.background = buildHeatmapColorbarGradient(
+      state.activeHeatmapColormap,
+      minPercent,
+      maxPercent
+    );
+  }
   const minInput = colorbar.querySelector(".heatmap-colorbar-input-min");
   if (minInput && document.activeElement !== minInput) {
     minInput.value = String(heatmapValueToSliderValue(sourceKey, minValue));
@@ -1289,14 +1596,22 @@ function updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, activeRange
   if (maxLabel) {
     maxLabel.textContent = formatHeatmapColorbarValue(sourceKey, maxValue);
   }
+  const colormapSelect = colorbar.querySelector(".heatmap-colormap-select");
+  if (colormapSelect && document.activeElement !== colormapSelect) {
+    colormapSelect.value = state.activeHeatmapColormap;
+  }
 }
 
-function updateHeatmapPlotColorRange(range) {
+function updateHeatmapPlotColors(range) {
   const plotDiv = document.getElementById("c-heatmap-plot");
   if (!plotDiv || !Array.isArray(plotDiv.data) || plotDiv.data.length === 0 || !range) {
     return;
   }
-  Plotly.restyle(plotDiv, { zmin: [range.min], zmax: [range.max] });
+  Plotly.restyle(plotDiv, {
+    colorscale: [getHeatmapColorscale()],
+    zmin: [range.min],
+    zmax: [range.max],
+  });
 }
 
 function renderHeatmapColorbar(sourceKey, zMin, zMax, activeRange) {
@@ -1314,30 +1629,39 @@ function renderHeatmapColorbar(sourceKey, zMin, zMax, activeRange) {
   const sliderMin = heatmapValueToSliderValue(sourceKey, zMin);
   const sliderMax = heatmapValueToSliderValue(sourceKey, zMax);
   colorbar.innerHTML = `
-    <div class="heatmap-colorbar-labels">
-      <span class="heatmap-colorbar-min-label">${formatHeatmapColorbarValue(sourceKey, range.min)}</span>
-      <span class="heatmap-colorbar-max-label">${formatHeatmapColorbarValue(sourceKey, range.max)}</span>
-    </div>
-    <div class="heatmap-colorbar-control">
-      <div class="heatmap-colorbar-track" aria-hidden="true"></div>
-      <input
-        class="heatmap-colorbar-input heatmap-colorbar-input-min"
-        type="range"
-        min="${sliderMin}"
-        max="${sliderMax}"
-        step="${getHeatmapSliderStep(sourceKey)}"
-        value="${heatmapValueToSliderValue(sourceKey, range.min)}"
-        aria-label="Heatmap minimum"
-      >
-      <input
-        class="heatmap-colorbar-input heatmap-colorbar-input-max"
-        type="range"
-        min="${sliderMin}"
-        max="${sliderMax}"
-        step="${getHeatmapSliderStep(sourceKey)}"
-        value="${heatmapValueToSliderValue(sourceKey, range.max)}"
-        aria-label="Heatmap maximum"
-      >
+    <div class="heatmap-colorbar-row">
+      <div class="heatmap-colorbar-range">
+        <div class="heatmap-colorbar-labels">
+          <span class="heatmap-colorbar-min-label">${formatHeatmapColorbarValue(sourceKey, range.min)}</span>
+          <span class="heatmap-colorbar-max-label">${formatHeatmapColorbarValue(sourceKey, range.max)}</span>
+        </div>
+        <div class="heatmap-colorbar-control">
+          <div class="heatmap-colorbar-track" aria-hidden="true"></div>
+          <input
+            class="heatmap-colorbar-input heatmap-colorbar-input-min"
+            type="range"
+            min="${sliderMin}"
+            max="${sliderMax}"
+            step="${getHeatmapSliderStep(sourceKey)}"
+            value="${heatmapValueToSliderValue(sourceKey, range.min)}"
+            aria-label="Heatmap minimum"
+          >
+          <input
+            class="heatmap-colorbar-input heatmap-colorbar-input-max"
+            type="range"
+            min="${sliderMin}"
+            max="${sliderMax}"
+            step="${getHeatmapSliderStep(sourceKey)}"
+            value="${heatmapValueToSliderValue(sourceKey, range.max)}"
+            aria-label="Heatmap maximum"
+          >
+        </div>
+      </div>
+      <label class="heatmap-colormap-control">
+        <select class="heatmap-colormap-select" aria-label="Heatmap colormap">
+          ${renderHeatmapColormapOptions()}
+        </select>
+      </label>
     </div>
   `;
   updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, range);
@@ -1346,14 +1670,21 @@ function renderHeatmapColorbar(sourceKey, zMin, zMax, activeRange) {
     const nextMin = heatmapSliderValueToValue(sourceKey, minInput.value);
     const nextRange = setHeatmapRangeForSource(sourceKey, zMin, zMax, { min: nextMin });
     updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, nextRange);
-    updateHeatmapPlotColorRange(nextRange);
+    updateHeatmapPlotColors(nextRange);
   });
   const maxInput = colorbar.querySelector(".heatmap-colorbar-input-max");
   maxInput?.addEventListener("input", () => {
     const nextMax = heatmapSliderValueToValue(sourceKey, maxInput.value);
     const nextRange = setHeatmapRangeForSource(sourceKey, zMin, zMax, { max: nextMax });
     updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, nextRange);
-    updateHeatmapPlotColorRange(nextRange);
+    updateHeatmapPlotColors(nextRange);
+  });
+  const colormapSelect = colorbar.querySelector(".heatmap-colormap-select");
+  colormapSelect?.addEventListener("change", () => {
+    state.activeHeatmapColormap = normalizeHeatmapColormapKey(colormapSelect.value);
+    saveUiState();
+    updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, getHeatmapRangeForSource(sourceKey, zMin, zMax));
+    updateHeatmapPlotColors(getHeatmapRangeForSource(sourceKey, zMin, zMax));
   });
 }
 
@@ -1376,10 +1707,7 @@ function renderHeatmapPlot(plotId, sourceKey, { updateColorbar = true } = {}) {
     type: "heatmap",
     x,
     z,
-    colorscale: [
-      [0, "rgb(0, 0, 0)"],
-      [1, "rgb(255, 255, 255)"],
-    ],
+    colorscale: getHeatmapColorscale(),
     zmin: colorRange.min,
     zmax: colorRange.max,
     showscale: false,

@@ -105,6 +105,7 @@ const state = {
   traceHoverNeuronId: null,
   dffDenominatorCache: new Map(),
   heatmapRangeBySource: {},
+  activeHeatmapColormap: "gray",
   activeBackgroundKey: null,
   activeBlueprintMetric: BLUEPRINT_NONE,
   qcRanges: {},
@@ -488,6 +489,7 @@ function saveUiState() {
       traceDffSpacingPercent: state.traceDffSpacingPercent,
       traceDffPixelsPerPercent: state.traceDffPixelsPerPercent,
       heatmapRangeBySource: state.heatmapRangeBySource,
+      activeHeatmapColormap: state.activeHeatmapColormap,
       activeBackgroundKey: state.activeBackgroundKey,
       activeBlueprintMetric: state.activeBlueprintMetric,
       qcRanges: state.qcRanges,
@@ -549,6 +551,9 @@ function loadUiState() {
       parsed.heatmapRangeBySource,
       parsed.heatmapMaxBySource
     );
+    if (typeof parsed.activeHeatmapColormap === "string") {
+      state.activeHeatmapColormap = parsed.activeHeatmapColormap;
+    }
     state.activeBackgroundKey = normalizeBackgroundKey(parsed.activeBackgroundKey);
     if (isAvailableBlueprintMetric(parsed.activeBlueprintMetric)) {
       state.activeBlueprintMetric = parsed.activeBlueprintMetric;
