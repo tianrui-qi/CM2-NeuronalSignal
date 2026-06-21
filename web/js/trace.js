@@ -393,7 +393,6 @@ const TEMPORAL_PLOT_DOWNLOADS = {
   },
 };
 let traceDeselectHideTimer = null;
-let activeTraceSortKey = TRACE_SORT_DEFAULT_KEY;
 
 function setPlotPanelEmpty(plotDiv, isEmpty) {
   plotDiv.closest(".plot-panel")?.classList.toggle("is-empty", isEmpty);
@@ -685,7 +684,7 @@ function getSelectedTraceNeuronIds(roi, filters = getActiveQcFilters()) {
 }
 
 function getOrderedSelectedTraceNeuronIds(sourceKey, roi, filters = getActiveQcFilters()) {
-  return sortTraceNeuronIds(getSelectedTraceNeuronIds(roi, filters), sourceKey, activeTraceSortKey);
+  return sortTraceNeuronIds(getSelectedTraceNeuronIds(roi, filters), sourceKey, getActiveTraceSortKey());
 }
 
 function getHeatmapNeuronIds(roi, filters = getActiveQcFilters()) {
@@ -826,7 +825,13 @@ function sortTraceNeuronIds(neuronIds, sourceKey, sortKey) {
 }
 
 function setTraceSortCustom() {
-  activeTraceSortKey = TRACE_SORT_CUSTOM_KEY;
+  state.activeTraceSortKey = TRACE_SORT_CUSTOM_KEY;
+}
+
+function getActiveTraceSortKey() {
+  return TRACE_SORT_OPTIONS.some((option) => option.key === state.activeTraceSortKey)
+    ? state.activeTraceSortKey
+    : TRACE_SORT_DEFAULT_KEY;
 }
 
 function setActiveTraceSort(sourceKey, sortKey = TRACE_SORT_DEFAULT_KEY) {
@@ -834,7 +839,7 @@ function setActiveTraceSort(sourceKey, sortKey = TRACE_SORT_DEFAULT_KEY) {
   if (!roi || !isTraceSourceAvailable(sourceKey)) {
     return;
   }
-  activeTraceSortKey = TRACE_SORT_OPTIONS.some((option) => option.key === sortKey)
+  state.activeTraceSortKey = TRACE_SORT_OPTIONS.some((option) => option.key === sortKey)
     ? sortKey
     : TRACE_SORT_DEFAULT_KEY;
   refreshRoiViews({ includePlots: true });
@@ -852,9 +857,10 @@ function renderTraceOperationControls(sourceKey) {
   container.classList.remove("hidden");
   container.innerHTML = "";
 
-  if (!TRACE_SORT_OPTIONS.some((option) => option.key === activeTraceSortKey)) {
-    activeTraceSortKey = TRACE_SORT_DEFAULT_KEY;
+  if (!TRACE_SORT_OPTIONS.some((option) => option.key === state.activeTraceSortKey)) {
+    state.activeTraceSortKey = TRACE_SORT_DEFAULT_KEY;
   }
+  const activeTraceSortKey = getActiveTraceSortKey();
   const sortControl = document.createElement("div");
   sortControl.className = "trace-sort-toggle";
   sortControl.setAttribute("role", "group");

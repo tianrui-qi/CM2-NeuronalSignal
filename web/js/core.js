@@ -1,4 +1,6 @@
 const STORAGE_KEY = "cm2_web_roi_state_v2";
+const UI_STATE_API_PATH = "/api/ui-state";
+const UI_STATE_SAVE_DEBOUNCE_MS = 250;
 const DEFAULT_ROI_COLORS = [
   "#f2559c",
   "#41a85f",
@@ -102,6 +104,7 @@ const state = {
   activeTraceValueMode: "df",
   traceDffSpacingPercent: TRACE_DFF_SPACING_PERCENT_DEFAULT,
   traceDffPixelsPerPercent: TRACE_DFF_PIXELS_PER_PERCENT_DEFAULT,
+  activeTraceSortKey: "custom",
   traceHoverNeuronId: null,
   dffDenominatorCache: new Map(),
   heatmapRangeBySource: {},
@@ -119,6 +122,9 @@ const state = {
   mapViewportKey: null,
   mapViewRange: null,
 };
+
+let pendingRemoteUiState = null;
+let remoteUiStateSaveTimer = null;
 
 function setStatus(message, isError = false) {
   const el = document.getElementById("status-banner");
@@ -478,36 +484,108 @@ function normalizeWorkflowSection(section, fallback = "temporalTrace") {
   return fallback;
 }
 
-function saveUiState() {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      rois: state.rois,
-      activeRoiId: null,
-      activeSignalSource: state.activeSignalSource,
-      activeTraceValueMode: state.activeTraceValueMode,
-      traceDffSpacingPercent: state.traceDffSpacingPercent,
-      traceDffPixelsPerPercent: state.traceDffPixelsPerPercent,
-      heatmapRangeBySource: state.heatmapRangeBySource,
-      activeHeatmapColormap: state.activeHeatmapColormap,
-      activeBackgroundKey: state.activeBackgroundKey,
-      activeBlueprintMetric: state.activeBlueprintMetric,
-      qcRanges: state.qcRanges,
-      regionPolygons: state.regionPolygons,
-      activeWorkflowSection: state.activeWorkflowSection,
-      openSections: state.openSections,
-      overlayWidth: state.overlayWidth,
-    })
-  );
+function serializeUiState() {
+  return {
+    schemaVersion: 1,
+    rois: state.rois,
+    activeRoiId: state.activeRoiId,
+    activeSignalSource: state.activeSignalSource,
+    activeTraceValueMode: state.activeTraceValueMode,
+    activeTraceSortKey: state.activeTraceSortKey,
+    traceDffSpacingPercent: state.traceDffSpacingPercent,
+    traceDffPixelsPerPercent: state.traceDffPixelsPerPercent,
+    heatmapRangeBySource: state.heatmapRangeBySource,
+    activeHeatmapColormap: state.activeHeatmapColormap,
+    activeBackgroundKey: state.activeBackgroundKey,
+    activeBlueprintMetric: state.activeBlueprintMetric,
+    qcRanges: state.qcRanges,
+    regionPolygons: state.regionPolygons,
+    activeWorkflowSection: state.activeWorkflowSection,
+    openSections: state.openSections,
+    overlayWidth: state.overlayWidth,
+  };
 }
 
-function loadUiState() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
+function persistUiStateLocal(payload) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.warn("Failed to mirror viewer state in localStorage.", error);
+  }
+}
+
+function clearLocalUiStateMirror() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (error) {
+    console.warn("Failed to clear local viewer state mirror.", error);
+  }
+}
+
+function queueRemoteUiStateSave(payload) {
+  pendingRemoteUiState = payload;
+  if (remoteUiStateSaveTimer !== null) {
+    window.clearTimeout(remoteUiStateSaveTimer);
+  }
+  remoteUiStateSaveTimer = window.setTimeout(() => {
+    flushRemoteUiStateSave();
+  }, UI_STATE_SAVE_DEBOUNCE_MS);
+}
+
+async function flushRemoteUiStateSave({ keepalive = false } = {}) {
+  if (remoteUiStateSaveTimer !== null) {
+    window.clearTimeout(remoteUiStateSaveTimer);
+    remoteUiStateSaveTimer = null;
+  }
+  if (!pendingRemoteUiState) {
+    return;
+  }
+  const payload = pendingRemoteUiState;
+  pendingRemoteUiState = null;
+  try {
+    const response = await fetch(UI_STATE_API_PATH, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive,
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+  } catch (error) {
+    if (!pendingRemoteUiState) {
+      pendingRemoteUiState = payload;
+      remoteUiStateSaveTimer = window.setTimeout(() => {
+        flushRemoteUiStateSave();
+      }, UI_STATE_SAVE_DEBOUNCE_MS * 4);
+    }
+    console.warn("Failed to save viewer state to cache cookie folder.", error);
+  }
+}
+
+function sendPendingUiStateBeacon() {
+  if (!pendingRemoteUiState || typeof navigator.sendBeacon !== "function") {
+    return;
+  }
+  const payload = pendingRemoteUiState;
+  pendingRemoteUiState = null;
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  if (!navigator.sendBeacon(UI_STATE_API_PATH, blob)) {
+    pendingRemoteUiState = payload;
+  }
+}
+
+function saveUiState() {
+  const payload = serializeUiState();
+  persistUiStateLocal(payload);
+  queueRemoteUiStateSave(payload);
+}
+
+function applyUiState(parsed) {
+  if (!parsed || typeof parsed !== "object") {
     return false;
   }
   try {
-    const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed.rois)) {
       return false;
     }
@@ -528,12 +606,18 @@ function loadUiState() {
           })
         : [],
     }));
-    state.activeRoiId = null;
+    state.activeRoiId = typeof parsed.activeRoiId === "string"
+      && state.rois.some((roi) => roi.id === parsed.activeRoiId)
+      ? parsed.activeRoiId
+      : null;
     if (isTraceSourceAvailable(parsed.activeSignalSource)) {
       state.activeSignalSource = parsed.activeSignalSource;
     }
     if (isTraceValueModeAvailable(parsed.activeTraceValueMode, state.activeSignalSource)) {
       state.activeTraceValueMode = parsed.activeTraceValueMode;
+    }
+    if (typeof parsed.activeTraceSortKey === "string") {
+      state.activeTraceSortKey = parsed.activeTraceSortKey;
     }
     state.traceDffSpacingPercent = normalizeTraceDffSpacingPercent(
       parsed.traceDffSpacingPercent,
@@ -573,6 +657,36 @@ function loadUiState() {
     return false;
   }
 }
+
+async function loadRemoteUiState() {
+  const response = await fetch(UI_STATE_API_PATH, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Failed to load cache cookie state: HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  return payload?.state ?? null;
+}
+
+async function loadUiState() {
+  try {
+    const remoteState = await loadRemoteUiState();
+    if (!remoteState) {
+      clearLocalUiStateMirror();
+      return false;
+    }
+    const loaded = applyUiState(remoteState);
+    if (loaded) {
+      persistUiStateLocal(serializeUiState());
+    }
+    return loaded;
+  } catch (error) {
+    console.warn("Remote cache cookie state is unavailable; starting with a fresh viewer state.", error);
+    clearLocalUiStateMirror();
+    return false;
+  }
+}
+
+window.addEventListener("pagehide", sendPendingUiStateBeacon);
 
 function getAvailableTraceSourceKeys() {
   return TRACE_SOURCE_ORDER.filter((sourceKey) => (
