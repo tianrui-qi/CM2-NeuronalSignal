@@ -94,20 +94,24 @@ function getDffDenominator(sourceKey, neuronId) {
   return denominator;
 }
 
-const TRACE_PLOT_MARGIN = { l: 0, r: 0, t: 14, b: 8 };
+const TRACE_PLOT_MARGIN = { l: 0, r: 0, t: 0, b: 0 };
 const HEATMAP_PLOT_MARGIN = { l: 0, r: 0, t: 0, b: 0 };
 const TRACE_ROW_HEIGHT_PX = 52;
-const TRACE_VERTICAL_MARGIN_PX = 18;
 const TRACE_ROW_STEP_FALLBACK = 1;
 const TRACE_ROW_STEP_MIN = 1e-6;
-const TRACE_ROW_RANGE_PAD_FRACTION = 0.08;
 const TRACE_ZERO_GUIDE_COLOR = "rgba(255, 255, 255, 0.16)";
 const TRACE_DFF_THRESHOLD_VALUE = 0.05;
 const TRACE_DFF_THRESHOLD_COLOR = "rgba(255, 255, 255, 0.28)";
 const TRACE_DFF_THRESHOLD_LABEL = `${Math.round(TRACE_DFF_THRESHOLD_VALUE * 100)}%`;
+const TRACE_DFF_THRESHOLD_LABEL_FONT_PX = 11;
+const TRACE_DFF_THRESHOLD_LABEL_YSHIFT_PX = 2;
+const TRACE_DFF_THRESHOLD_LABEL_CLEARANCE_PX = Math.ceil(
+  TRACE_DFF_THRESHOLD_LABEL_FONT_PX * 1.25 + TRACE_DFF_THRESHOLD_LABEL_YSHIFT_PX + 3,
+);
 const HEATMAP_ROW_HEIGHT_PX = 0.8;
 const HEATMAP_PERCENT_SCALE = 100;
 const HEATMAP_COLORMAP_DEFAULT = "gray";
+let activeHeatmapColormapControl = null;
 const HEATMAP_COLORMAP_ORDER = [
   "gray",
   "viridis",
@@ -854,6 +858,7 @@ function renderTraceOperationControls(sourceKey) {
   const roi = getActiveTemporalRoi();
   const hasRoi = Boolean(roi);
   const sourceAvailable = isTraceSourceAvailable(sourceKey);
+  document.getElementById("trace-operation-row")?.classList.remove("hidden");
   container.classList.remove("hidden");
   container.innerHTML = "";
 
@@ -957,8 +962,9 @@ function buildTracePlotData(sourceKey) {
     && getTraceDffSpacingPercent() > TRACE_DFF_SPACING_PERCENT_MIN;
   const traceLineColor = "rgba(255, 255, 255, 0.72)";
   let neuronCount = 0;
-  let globalMinY = Infinity;
-  let globalMaxY = -Infinity;
+  let traceMinY = Infinity;
+  let traceMaxY = -Infinity;
+  let thresholdLabelY = null;
   const qcFilters = getActiveQcFilters();
   const roi = getActiveTemporalRoi();
   const neuronIds = getOrderedSelectedTraceNeuronIds(sourceKey, roi, qcFilters);
@@ -967,25 +973,20 @@ function buildTracePlotData(sourceKey) {
 
   if (neuronIds.length > 0) {
     neuronCount = neuronIds.length;
-    let groupMinY = Infinity;
-    let groupMaxY = -Infinity;
     neuronIds.forEach((neuronId, localIdx) => {
       const trace = getTraceSlice(sourceKey, neuronId);
       const baseline = -(localIdx * rowStep);
       const y = [];
       zeroGuide.x.push(0, nFrames - 1, NaN);
       zeroGuide.y.push(baseline, baseline, NaN);
-      groupMinY = Math.min(groupMinY, baseline);
-      groupMaxY = Math.max(groupMaxY, baseline);
       if (showDffThreshold) {
         const thresholdY = baseline + dffThresholdDisplayValue;
         dffThresholdGuide.x.push(0, nFrames - 1, NaN);
         dffThresholdGuide.y.push(thresholdY, thresholdY, NaN);
-        groupMinY = Math.min(groupMinY, thresholdY);
-        groupMaxY = Math.max(groupMaxY, thresholdY);
         if (localIdx === 0) {
+          thresholdLabelY = thresholdY;
           annotations.push({
-            x: Math.max(0, Math.round(nFrames * 0.015)),
+            x: 0,
             y: thresholdY,
             xref: "x",
             yref: "y",
@@ -993,10 +994,11 @@ function buildTracePlotData(sourceKey) {
             showarrow: false,
             xanchor: "left",
             yanchor: "bottom",
-            yshift: 2,
+            xshift: -2,
+            yshift: TRACE_DFF_THRESHOLD_LABEL_YSHIFT_PX,
             font: {
               color: "rgba(255, 255, 255, 0.72)",
-              size: 10,
+              size: TRACE_DFF_THRESHOLD_LABEL_FONT_PX,
             },
           });
         }
@@ -1004,8 +1006,8 @@ function buildTracePlotData(sourceKey) {
       for (let t = 0; t < nFrames; t += 1) {
         const yValue = baseline + getTracePlotValue(sourceKey, neuronId, trace[t]);
         y.push(yValue);
-        groupMinY = Math.min(groupMinY, yValue);
-        groupMaxY = Math.max(groupMaxY, yValue);
+        traceMinY = Math.min(traceMinY, yValue);
+        traceMaxY = Math.max(traceMaxY, yValue);
       }
       traces.push({
         type: "scatter",
@@ -1019,9 +1021,6 @@ function buildTracePlotData(sourceKey) {
         showlegend: false,
       });
     });
-    const yPadding = Math.max((groupMaxY - groupMinY) * 0.004, rowStep * 0.02, TRACE_ROW_STEP_MIN);
-    globalMinY = Math.min(globalMinY, groupMinY - yPadding);
-    globalMaxY = Math.max(globalMaxY, groupMaxY + yPadding);
   }
 
   if (zeroGuide.x.length) {
@@ -1047,14 +1046,24 @@ function buildTracePlotData(sourceKey) {
     });
   }
 
-  const rangePadding = Math.max(rowStep * TRACE_ROW_RANGE_PAD_FRACTION, TRACE_ROW_STEP_MIN);
-  const yRange = Number.isFinite(globalMinY) && Number.isFinite(globalMaxY)
-    ? [globalMinY - rangePadding, globalMaxY + rangePadding]
-    : [-TRACE_ROW_STEP_FALLBACK, TRACE_ROW_STEP_FALLBACK];
+  let yRange = [-TRACE_ROW_STEP_FALLBACK, TRACE_ROW_STEP_FALLBACK];
+  if (Number.isFinite(traceMinY) && Number.isFinite(traceMaxY)) {
+    if (traceMaxY > traceMinY) {
+      yRange = [traceMinY, traceMaxY];
+    } else {
+      const halfSpan = Math.max(Math.abs(traceMinY) * 0.01, TRACE_ROW_STEP_MIN);
+      yRange = [traceMinY - halfSpan, traceMaxY + halfSpan];
+    }
+  }
+  if (Number.isFinite(thresholdLabelY)) {
+    const labelClearance = TRACE_DFF_THRESHOLD_LABEL_CLEARANCE_PX
+      / getTraceDffPixelsPerUnit();
+    yRange[1] = Math.max(yRange[1], thresholdLabelY + labelClearance);
+  }
   const ySpan = Math.max(yRange[1] - yRange[0], TRACE_ROW_STEP_MIN);
   const height = isDynamicDffSource(sourceKey)
-    ? Math.ceil(ySpan * getTraceDffPixelsPerUnit() + TRACE_PLOT_MARGIN.t + TRACE_PLOT_MARGIN.b)
-    : neuronCount * TRACE_ROW_HEIGHT_PX + TRACE_VERTICAL_MARGIN_PX;
+    ? Math.ceil(ySpan * getTraceDffPixelsPerUnit())
+    : neuronCount * TRACE_ROW_HEIGHT_PX;
   return {
     traces,
     shapes,
@@ -1142,11 +1151,7 @@ function showTraceDeselectButton(plotDiv, point) {
   const yPixel = yaxis && typeof yaxis.d2p === "function"
     ? yaxis.d2p(baseline) + (yaxis._offset ?? 0)
     : plotRect.height / 2;
-  const y = clamp(
-    plotRect.top + yPixel - TRACE_DESELECT_BUTTON_SIZE_PX / 2,
-    plotRect.top + TRACE_DESELECT_BUTTON_INSET_PX,
-    plotRect.bottom - TRACE_DESELECT_BUTTON_SIZE_PX - TRACE_DESELECT_BUTTON_INSET_PX
-  );
+  const y = plotRect.top + yPixel - TRACE_DESELECT_BUTTON_SIZE_PX;
   const rightEdge = Math.min(plotRect.right, panelRect.right) - TRACE_DESELECT_BUTTON_INSET_PX;
   const x = rightEdge - TRACE_DESELECT_BUTTON_SIZE_PX;
 
@@ -1221,6 +1226,8 @@ function renderTracePlot(plotId, sourceKey) {
 
   setPlotPanelEmpty(plotDiv, false);
   setTemporalDownloadEnabled(TEMPORAL_PLOT_DOWNLOADS.trace, true);
+  const plotHeight = Math.max(1, Math.ceil(height));
+  plotDiv.style.height = `${plotHeight}px`;
   Plotly.react(plotDiv, traces, {
     margin: TRACE_PLOT_MARGIN,
     paper_bgcolor: "rgba(0,0,0,0)",
@@ -1229,7 +1236,7 @@ function renderTracePlot(plotId, sourceKey) {
     yaxis: { visible: false, range: yRange, fixedrange: true },
     shapes,
     annotations,
-    height,
+    height: plotHeight,
     showlegend: false,
     hovermode: "closest",
     hoverdistance: 18,
@@ -1558,11 +1565,73 @@ function buildHeatmapColorbarGradient(colormapKey, minPercent, maxPercent) {
   return `linear-gradient(90deg, ${stops.join(", ")})`;
 }
 
+function setHeatmapColormapMenuOpen(control, isOpen) {
+  if (!control) {
+    return;
+  }
+  if (isOpen && activeHeatmapColormapControl && activeHeatmapColormapControl !== control) {
+    setHeatmapColormapMenuOpen(activeHeatmapColormapControl, false);
+  }
+  const trigger = control.querySelector(".heatmap-colormap-trigger");
+  const menu = control.querySelector(".heatmap-colormap-menu");
+  menu?.classList.toggle("hidden", !isOpen);
+  trigger?.setAttribute("aria-expanded", String(isOpen));
+  control.closest(".workflow-section")?.classList.toggle("menu-open", isOpen);
+  if (isOpen) {
+    activeHeatmapColormapControl = control;
+  } else if (activeHeatmapColormapControl === control) {
+    activeHeatmapColormapControl = null;
+  }
+}
+
+function focusHeatmapColormapOption(menu, index) {
+  const options = Array.from(menu?.querySelectorAll(".heatmap-colormap-option") ?? []);
+  if (options.length === 0) {
+    return;
+  }
+  options[clamp(index, 0, options.length - 1)].focus();
+}
+
+document.addEventListener("pointerdown", (event) => {
+  if (
+    !activeHeatmapColormapControl
+    || activeHeatmapColormapControl.contains(event.target)
+  ) {
+    return;
+  }
+  setHeatmapColormapMenuOpen(activeHeatmapColormapControl, false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !activeHeatmapColormapControl) {
+    return;
+  }
+  const trigger = activeHeatmapColormapControl.querySelector(".heatmap-colormap-trigger");
+  setHeatmapColormapMenuOpen(activeHeatmapColormapControl, false);
+  trigger?.focus();
+});
+
 function renderHeatmapColormapOptions() {
+  const activeKey = normalizeHeatmapColormapKey(state.activeHeatmapColormap);
   return HEATMAP_COLORMAP_ORDER.map((key) => {
     const spec = HEATMAP_COLORMAPS[key];
-    const selected = normalizeHeatmapColormapKey(state.activeHeatmapColormap) === key ? " selected" : "";
-    return `<option value="${key}"${selected}>${spec.label}</option>`;
+    const isActive = activeKey === key;
+    return `
+      <button
+        class="heatmap-colormap-option${isActive ? " is-active" : ""}"
+        type="button"
+        role="option"
+        aria-selected="${String(isActive)}"
+        data-colormap-key="${key}"
+      >
+        <span class="heatmap-colormap-option-name">${spec.label}</span>
+        <span
+          class="heatmap-colormap-option-preview"
+          style="background: ${buildHeatmapColorbarGradient(key, 0, 100)}"
+          aria-hidden="true"
+        ></span>
+      </button>
+    `;
   }).join("");
 }
 
@@ -1602,9 +1671,15 @@ function updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, activeRange
   if (maxLabel) {
     maxLabel.textContent = formatHeatmapColorbarValue(sourceKey, maxValue);
   }
-  const colormapSelect = colorbar.querySelector(".heatmap-colormap-select");
-  if (colormapSelect && document.activeElement !== colormapSelect) {
-    colormapSelect.value = state.activeHeatmapColormap;
+  const colormapSpec = getHeatmapColormapSpec();
+  const colormapLabel = colorbar.querySelector(".heatmap-colormap-trigger-label");
+  if (colormapLabel) {
+    colormapLabel.textContent = colormapSpec.label;
+  }
+  for (const option of colorbar.querySelectorAll(".heatmap-colormap-option")) {
+    const isActive = option.dataset.colormapKey === state.activeHeatmapColormap;
+    option.classList.toggle("is-active", isActive);
+    option.setAttribute("aria-selected", String(isActive));
   }
 }
 
@@ -1625,6 +1700,9 @@ function renderHeatmapColorbar(sourceKey, zMin, zMax, activeRange) {
   if (!colorbar) {
     return;
   }
+  if (activeHeatmapColormapControl && colorbar.contains(activeHeatmapColormapControl)) {
+    setHeatmapColormapMenuOpen(activeHeatmapColormapControl, false);
+  }
   const hasRange = Number.isFinite(zMin) && Number.isFinite(zMax) && zMax > zMin;
   colorbar.classList.toggle("hidden", !hasRange);
   if (!hasRange) {
@@ -1636,9 +1714,24 @@ function renderHeatmapColorbar(sourceKey, zMin, zMax, activeRange) {
   const sliderMax = heatmapValueToSliderValue(sourceKey, zMax);
   colorbar.innerHTML = `
     <div class="heatmap-colorbar-row">
+      <div class="heatmap-colormap-control">
+        <button
+          class="heatmap-colormap-trigger"
+          type="button"
+          aria-label="Heatmap colormap"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+        >
+          <span class="heatmap-colormap-trigger-label">${getHeatmapColormapSpec().label}</span>
+        </button>
+        <div class="heatmap-colormap-menu hidden" role="listbox" aria-label="Heatmap colormap options">
+          ${renderHeatmapColormapOptions()}
+        </div>
+      </div>
       <div class="heatmap-colorbar-range">
         <div class="heatmap-colorbar-labels">
           <span class="heatmap-colorbar-min-label">${formatHeatmapColorbarValue(sourceKey, range.min)}</span>
+          <span class="heatmap-colorbar-range-label">Color Map</span>
           <span class="heatmap-colorbar-max-label">${formatHeatmapColorbarValue(sourceKey, range.max)}</span>
         </div>
         <div class="heatmap-colorbar-control">
@@ -1663,11 +1756,6 @@ function renderHeatmapColorbar(sourceKey, zMin, zMax, activeRange) {
           >
         </div>
       </div>
-      <label class="heatmap-colormap-control">
-        <select class="heatmap-colormap-select" aria-label="Heatmap colormap">
-          ${renderHeatmapColormapOptions()}
-        </select>
-      </label>
     </div>
   `;
   updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, range);
@@ -1685,13 +1773,65 @@ function renderHeatmapColorbar(sourceKey, zMin, zMax, activeRange) {
     updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, nextRange);
     updateHeatmapPlotColors(nextRange);
   });
-  const colormapSelect = colorbar.querySelector(".heatmap-colormap-select");
-  colormapSelect?.addEventListener("change", () => {
-    state.activeHeatmapColormap = normalizeHeatmapColormapKey(colormapSelect.value);
-    saveUiState();
-    updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, getHeatmapRangeForSource(sourceKey, zMin, zMax));
-    updateHeatmapPlotColors(getHeatmapRangeForSource(sourceKey, zMin, zMax));
+  const colormapControl = colorbar.querySelector(".heatmap-colormap-control");
+  const colormapTrigger = colorbar.querySelector(".heatmap-colormap-trigger");
+  const colormapMenu = colorbar.querySelector(".heatmap-colormap-menu");
+  colormapTrigger?.addEventListener("click", () => {
+    setHeatmapColormapMenuOpen(
+      colormapControl,
+      colormapTrigger.getAttribute("aria-expanded") !== "true"
+    );
   });
+  colormapTrigger?.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+      return;
+    }
+    event.preventDefault();
+    setHeatmapColormapMenuOpen(colormapControl, true);
+    const options = Array.from(colormapMenu?.querySelectorAll(".heatmap-colormap-option") ?? []);
+    const activeIndex = Math.max(0, options.findIndex((option) => option.classList.contains("is-active")));
+    focusHeatmapColormapOption(colormapMenu, event.key === "ArrowDown" ? activeIndex : options.length - 1);
+  });
+  colormapMenu?.addEventListener("keydown", (event) => {
+    const options = Array.from(colormapMenu.querySelectorAll(".heatmap-colormap-option"));
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setHeatmapColormapMenuOpen(colormapControl, false);
+      colormapTrigger?.focus();
+      return;
+    }
+    if (options.length === 0) {
+      return;
+    }
+    const currentIndex = options.indexOf(document.activeElement);
+    let nextIndex = null;
+    if (event.key === "ArrowDown") {
+      nextIndex = (currentIndex + 1) % options.length;
+    } else if (event.key === "ArrowUp") {
+      nextIndex = (currentIndex - 1 + options.length) % options.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = options.length - 1;
+    }
+    if (nextIndex === null) {
+      return;
+    }
+    event.preventDefault();
+    focusHeatmapColormapOption(colormapMenu, nextIndex);
+  });
+  for (const option of colorbar.querySelectorAll(".heatmap-colormap-option")) {
+    option.addEventListener("click", () => {
+      state.activeHeatmapColormap = normalizeHeatmapColormapKey(option.dataset.colormapKey);
+      saveUiState();
+      const nextRange = getHeatmapRangeForSource(sourceKey, zMin, zMax);
+      updateHeatmapColorbarState(colorbar, sourceKey, zMin, zMax, nextRange);
+      updateHeatmapPlotColors(nextRange);
+      setHeatmapColormapMenuOpen(colormapControl, false);
+      colormapTrigger?.focus();
+    });
+  }
 }
 
 function renderHeatmapPlot(plotId, sourceKey, { updateColorbar = true } = {}) {
@@ -1707,6 +1847,8 @@ function renderHeatmapPlot(plotId, sourceKey, { updateColorbar = true } = {}) {
 
   setPlotPanelEmpty(plotDiv, false);
   setTemporalDownloadEnabled(TEMPORAL_PLOT_DOWNLOADS.heatmap, true);
+  const plotHeight = Math.max(1, Math.ceil(height));
+  plotDiv.style.height = `${plotHeight}px`;
   const colorDomain = buildHeatmapColorDomain(sourceKey, zMin, zMax);
   const colorRange = getHeatmapRangeForSource(sourceKey, colorDomain.minValue, colorDomain.maxValue);
   Plotly.react(plotDiv, [{
@@ -1725,7 +1867,7 @@ function renderHeatmapPlot(plotId, sourceKey, { updateColorbar = true } = {}) {
     xaxis: { visible: false, range: [0, Math.max(state.meta.trace_length - 1, 1)], fixedrange: true },
     yaxis: { visible: false, autorange: "reversed" },
     shapes,
-    height,
+    height: plotHeight,
   }, { responsive: true, displaylogo: false, displayModeBar: false });
   if (updateColorbar) {
     renderHeatmapColorbar(sourceKey, colorDomain.minValue, colorDomain.maxValue, colorRange);

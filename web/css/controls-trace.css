@@ -1,11 +1,10 @@
 .trace-section-body {
-  gap: var(--space-4);
-  padding-right: var(--space-5);
-  padding-left: var(--space-5);
+  gap: var(--ui-spacing);
+  padding: var(--ui-spacing);
 }
 
 .trace-plot-panel {
-  padding-top: var(--space-5);
+  padding-top: 0;
 }
 
 .heatmap-colorbar {
@@ -18,18 +17,21 @@
 }
 
 .heatmap-colorbar-row {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(104px, 0.38fr);
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
   align-items: center;
-  gap: var(--space-3);
-  min-height: 30px;
+  gap: var(--ui-spacing);
+  height: var(--control-height);
+  min-height: var(--control-height);
+  overflow: visible;
 }
 
 .heatmap-colorbar-range {
   display: grid;
   align-content: center;
   min-width: 0;
-  height: 30px;
+  height: var(--control-height);
   gap: 2px;
 }
 
@@ -42,46 +44,129 @@
   line-height: 1;
 }
 
-.heatmap-colormap-select {
+.heatmap-colormap-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
   width: 100%;
-  height: 30px;
+  height: var(--control-height);
   min-width: 0;
-  padding: 0 26px 0 9px;
+  padding: 0 28px 0 9px;
   border: 1px solid var(--border-control);
   border-radius: var(--radius);
-  appearance: none;
-  -webkit-appearance: none;
-  background:
-    linear-gradient(45deg, transparent 50%, rgba(247, 241, 231, 0.82) 50%) calc(100% - 14px) 10px / 5px 5px no-repeat,
-    linear-gradient(135deg, rgba(247, 241, 231, 0.82) 50%, transparent 50%) calc(100% - 9px) 10px / 5px 5px no-repeat,
-    var(--surface-control);
+  background: var(--surface-control);
   color: var(--text);
-  color-scheme: dark;
   font: inherit;
   font-size: var(--font-size-sm);
+  text-align: left;
   cursor: pointer;
 }
 
-.heatmap-colormap-select option {
-  background-color: #302d28;
-  color: #f7f1e7;
+.heatmap-colormap-trigger::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--text-muted);
+  transform: translateY(-40%);
 }
 
-.heatmap-colormap-select option:checked {
-  background-color: #4a443b;
-  color: #fff8ef;
+.heatmap-colormap-trigger:hover {
+  background: var(--surface-control-hover);
 }
 
-.heatmap-colormap-select:focus {
+.heatmap-colormap-trigger:focus-visible {
   outline: 2px solid rgba(122, 210, 190, 0.72);
   outline-offset: 1px;
+}
+
+.heatmap-colormap-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heatmap-colormap-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + var(--ui-spacing));
+  z-index: var(--z-menu);
+  display: grid;
+  gap: 2px;
+  max-height: min(330px, 55vh);
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius);
+  background: var(--surface-menu);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(18px) saturate(135%);
+  scrollbar-width: thin;
+}
+
+.heatmap-colormap-menu.hidden {
+  display: none;
+}
+
+.heatmap-colormap-option {
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
+  align-items: center;
+  gap: var(--ui-spacing);
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.heatmap-colormap-option:hover,
+.heatmap-colormap-option:focus-visible,
+.heatmap-colormap-option.is-active {
+  background: var(--surface-control-hover);
+  outline: none;
+}
+
+.heatmap-colormap-option-name {
+  display: flex;
+  align-items: center;
+  height: calc(var(--control-height) - 8px);
+  min-width: 0;
+  padding: 0 9px;
+  overflow: hidden;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface-control);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heatmap-colormap-option-preview {
+  display: block;
+  height: 6px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-control);
 }
 
 .trace-scale-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
-  margin-top: var(--space-3);
+  gap: var(--ui-spacing);
+  height: var(--control-height);
+  min-height: var(--control-height);
 }
 
 .trace-scale-controls.hidden {
@@ -91,8 +176,22 @@
 .trace-operation-controls {
   display: block;
   min-width: 0;
-  min-height: 34px;
-  margin-top: var(--space-3);
+  height: var(--control-height);
+  min-height: var(--control-height);
+}
+
+.trace-operation-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ui-spacing);
+  width: 100%;
+  height: var(--control-height);
+  min-height: var(--control-height);
+}
+
+.trace-operation-row.hidden {
+  display: none;
 }
 
 .trace-operation-controls.hidden {
@@ -103,18 +202,19 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
+  gap: var(--ui-spacing);
+  min-height: var(--control-height);
+  margin-top: var(--ui-spacing);
 }
 
 .trace-download-row {
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
 .plot-download-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--ui-spacing);
   margin-left: auto;
 }
 
@@ -131,7 +231,8 @@
 .trace-sort-toggle {
   display: inline-flex;
   width: 100%;
-  min-height: 34px;
+  height: var(--control-height);
+  min-height: var(--control-height);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -169,8 +270,11 @@
 
 .trace-scale-control {
   display: grid;
+  grid-template-rows: 12px 16px;
+  align-content: center;
   min-width: 0;
-  gap: 5px;
+  height: var(--control-height);
+  gap: 2px;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   line-height: 1.1;
@@ -181,7 +285,7 @@
   align-items: center;
   justify-content: space-between;
   min-width: 0;
-  gap: var(--space-2);
+  gap: var(--ui-spacing);
 }
 
 .trace-scale-control-value {
@@ -300,11 +404,25 @@
 }
 
 .heatmap-colorbar-labels {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ui-spacing);
+  height: 12px;
+  margin: 0;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
-  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  line-height: 12px;
+}
+
+.heatmap-colorbar-labels > :last-child {
+  text-align: right;
+}
+
+.heatmap-colorbar-range-label {
+  text-align: center;
+  white-space: nowrap;
 }
 
 .primary-btn,
@@ -318,20 +436,27 @@
 }
 
 .primary-btn {
+  height: var(--control-height);
+  padding: 0 var(--space-4);
   background: var(--accent);
 }
 
 .mini-btn {
-  padding: 5px 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-height);
+  padding: 0 9px;
   font-size: var(--font-size-sm);
+  line-height: 1;
 }
 
 .trace-deselect-btn {
   position: fixed;
   z-index: var(--z-menu);
-  width: 20px;
-  min-width: 20px;
-  height: 20px;
+  width: var(--inline-action-size);
+  min-width: var(--inline-action-size);
+  height: var(--inline-action-size);
   padding: 0;
   font-size: 0;
   line-height: 0;
@@ -345,12 +470,15 @@
 .temporal-toggle-row {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
-  gap: var(--space-3);
+  gap: var(--ui-spacing);
+  height: var(--control-height);
+  min-height: var(--control-height);
 }
 
 .trace-source-toggle {
   display: inline-flex;
   width: 100%;
+  height: var(--control-height);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -359,7 +487,8 @@
 .trace-source-btn {
   flex: 1 1 0;
   min-width: 0;
-  padding: 7px 10px;
+  height: 100%;
+  padding: 0 10px;
   border: 0;
   border-right: 1px solid rgba(255, 245, 228, 0.14);
   border-radius: 0;
@@ -377,5 +506,7 @@
 @media (max-width: 520px) {
   .temporal-toggle-row {
     grid-template-columns: minmax(0, 1fr);
+    height: calc(var(--control-height) + var(--control-height) + var(--ui-spacing));
+    min-height: calc(var(--control-height) + var(--control-height) + var(--ui-spacing));
   }
 }

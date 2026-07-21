@@ -1,13 +1,35 @@
 .qc-card {
+  --qc-control-gap: var(--ui-spacing);
+  --qc-plot-left-inset: 0px;
+  --qc-plot-right-inset: 0px;
   display: flex;
   flex: 0 0 auto;
   min-height: 0;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--ui-spacing);
 }
 
 .qc-card.is-empty {
-  padding-bottom: var(--space-4);
+  padding-bottom: var(--ui-spacing);
+}
+
+.qc-controls {
+  display: grid;
+  gap: var(--ui-spacing);
+  width: 100%;
+}
+
+.qc-control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--qc-control-gap);
+  align-items: center;
+  width: 100%;
+  min-height: var(--control-height);
+}
+
+.qc-control-row.hidden {
+  display: none;
 }
 
 .blueprint-picker {
@@ -17,12 +39,10 @@
 
 .blueprint-select {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  gap: var(--space-4);
   width: 100%;
-  height: 32px;
+  height: var(--control-height);
   padding: 0 28px 0 10px;
   border: 1px solid var(--border-control);
   border-radius: var(--radius);
@@ -55,20 +75,12 @@
   white-space: nowrap;
 }
 
-.blueprint-select-range,
-.blueprint-option-range {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 .blueprint-menu {
   position: absolute;
   left: 0;
-  right: 0;
   top: calc(100% + 5px);
   z-index: var(--z-menu);
+  width: max(176px, 100%);
   max-height: min(300px, calc(100vh - 160px));
   overflow-y: auto;
   padding: 4px;
@@ -84,12 +96,10 @@
 }
 
 .blueprint-option {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  gap: var(--space-4);
   width: 100%;
-  min-height: 28px;
+  min-height: var(--control-height);
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -106,7 +116,7 @@
 }
 .blueprint-stats-plot {
   width: 100%;
-  height: 260px;
+  height: 130px;
   border: 0;
   background: transparent;
   overflow: hidden;
@@ -116,38 +126,99 @@
   display: none;
 }
 
-.qc-range-control {
-  width: 100%;
-  padding: 0 18px 8px 28px;
+.plot-download-row.qc-download-row {
+  margin-top: 0;
 }
 
-.qc-range-control.hidden {
+.qc-download-row.hidden {
   display: none;
 }
 
+.qc-inline-range {
+  display: grid;
+  grid-template-rows: 12px var(--slider-hit-height);
+  width: 100%;
+  height: var(--control-height);
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 var(--qc-plot-right-inset) 0 var(--qc-plot-left-inset);
+}
+
+.qc-inline-range.hidden {
+  display: none;
+}
+
+.qc-unit-toggle {
+  display: inline-flex;
+  width: 100%;
+  height: var(--control-height);
+  min-width: 0;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-control);
+}
+
+.qc-unit-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0 10px;
+  border: 0;
+  border-right: 1px solid rgba(255, 245, 228, 0.14);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.qc-unit-btn:last-child {
+  border-right: 0;
+}
+
+.qc-unit-btn:hover:not(:disabled) {
+  background: var(--surface-control-hover);
+}
+
+.qc-unit-btn.active {
+  background: var(--surface-active, rgba(255, 248, 239, 0.2));
+}
+
+.qc-unit-btn:disabled {
+  color: var(--text-subtle);
+  cursor: default;
+  opacity: 0.56;
+}
+
 .qc-range-values {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-5);
-  margin-bottom: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ui-spacing);
+  height: 12px;
+  margin: 0;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
+  line-height: 12px;
+}
+
+.qc-range-values > :last-child {
+  text-align: right;
+}
+
+.qc-range-label {
+  color: inherit;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .qc-range-slider {
   position: relative;
   width: 100%;
-  height: 22px;
-}
-
-.qc-absolute-values {
-  margin-top: 5px;
-  color: var(--text-subtle);
-}
-
-.qc-absolute-slider {
-  margin-top: 0;
+  height: var(--slider-hit-height);
 }
 
 .qc-range-track,
@@ -155,7 +226,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: 9px;
+  top: 7px;
   height: 4px;
   border-radius: var(--radius-pill);
 }
@@ -165,8 +236,11 @@
 }
 
 .qc-range-fill {
-  background: linear-gradient(90deg, rgba(202, 0, 32, 0.9), rgba(247, 247, 247, 0.9), rgba(5, 113, 176, 0.9));
-  clip-path: inset(0 0 0 0);
+  background: rgba(247, 241, 231, 0.72);
+}
+
+.qc-color-fill {
+  background: linear-gradient(90deg, rgba(202, 0, 32, 0.95), rgba(247, 247, 247, 0.95), rgba(5, 113, 176, 0.95));
 }
 
 .qc-range-input {
@@ -174,7 +248,7 @@
   left: 0;
   top: 0;
   width: 100%;
-  height: 22px;
+  height: var(--slider-hit-height);
   margin: 0;
   -webkit-appearance: none;
   appearance: none;
@@ -183,14 +257,14 @@
 }
 
 .qc-range-input::-webkit-slider-runnable-track {
-  height: 22px;
+  height: var(--slider-hit-height);
   background: transparent;
 }
 
 .qc-range-input::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
-  margin-top: 4px;
+  margin-top: 2px;
   border: 2px solid var(--text);
   border-radius: var(--radius-pill);
   -webkit-appearance: none;
@@ -210,7 +284,7 @@
 }
 
 .qc-range-input::-moz-range-track {
-  height: 22px;
+  height: var(--slider-hit-height);
   background: transparent;
 }
 

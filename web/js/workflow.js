@@ -11,7 +11,7 @@ function renderWorkflowSummaries() {
 
   const qcSummary = document.getElementById("qc-section-summary");
   if (qcSummary) {
-    qcSummary.textContent = "";
+    qcSummary.textContent = getBlueprintMetricLabel(state.activeBlueprintMetric);
   }
 
   const roiSummary = document.getElementById("roi-section-summary");
@@ -169,6 +169,13 @@ function wireOverlayResizer() {
     return;
   }
 
+  if (typeof ResizeObserver === "function" && !overlay.__cm2ResizeObserver) {
+    overlay.__cm2ResizeObserver = new ResizeObserver(() => {
+      schedulePanelPlotResize();
+    });
+    overlay.__cm2ResizeObserver.observe(overlay);
+  }
+
   let isResizing = false;
   let activePointerId = null;
   const updateWidth = (clientX) => {
@@ -191,7 +198,7 @@ function wireOverlayResizer() {
     overlay.classList.remove("is-resizing");
     document.body.style.cursor = "";
     saveUiState();
-    schedulePanelPlotResize();
+    schedulePanelPlotResize({ refreshTemporal: true });
   };
   const handleMouseMove = (event) => {
     if (!isResizing || activePointerId !== null) {
@@ -223,11 +230,13 @@ function wireOverlayResizer() {
 
   resizer.addEventListener("pointerup", finishResize);
   resizer.addEventListener("pointercancel", finishResize);
+  window.addEventListener("pointerup", finishResize);
+  window.addEventListener("pointercancel", finishResize);
   resizer.addEventListener("dblclick", () => {
     state.overlayWidth = null;
     applyOverlayWidth();
     saveUiState();
-    schedulePanelPlotResize();
+    schedulePanelPlotResize({ refreshTemporal: true });
   });
   resizer.addEventListener("mousedown", (event) => {
     if (window.innerWidth <= 800 || isResizing) {
@@ -241,6 +250,7 @@ function wireOverlayResizer() {
 }
 
 function wireButtons() {
+  wireQcDownloadButtons();
   for (const section of WORKFLOW_SECTIONS) {
     document.querySelector(`[data-section-toggle="${section}"]`)?.addEventListener("click", () => {
       toggleWorkflowSection(section);
@@ -278,17 +288,23 @@ function wireButtons() {
     }
   });
 
+  document.getElementById("qc-color-lower-input").addEventListener("input", () => {
+    updateActiveBlueprintColorRangeFromInputs("lower");
+  });
+  document.getElementById("qc-color-upper-input").addEventListener("input", () => {
+    updateActiveBlueprintColorRangeFromInputs("upper");
+  });
   document.getElementById("qc-range-lower-input").addEventListener("input", () => {
     updateActiveQcRangeFromInputs("lower");
   });
   document.getElementById("qc-range-upper-input").addEventListener("input", () => {
     updateActiveQcRangeFromInputs("upper");
   });
-  document.getElementById("qc-absolute-lower-input").addEventListener("input", () => {
-    updateActiveQcRangeFromInputs("lower", "qc-absolute");
-  });
-  document.getElementById("qc-absolute-upper-input").addEventListener("input", () => {
-    updateActiveQcRangeFromInputs("upper", "qc-absolute");
+  document.getElementById("qc-unit-mode")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-qc-unit-mode]");
+    if (button && !button.disabled) {
+      setQcThresholdMode(button.dataset.qcUnitMode);
+    }
   });
 
   document.addEventListener("keydown", (event) => {
@@ -308,7 +324,7 @@ function wireButtons() {
     }
     const nextKey = `${window.innerWidth}x${window.innerHeight}`;
     applyOverlayWidth();
-    schedulePanelPlotResize();
+    schedulePanelPlotResize({ refreshTemporal: true });
     if (state.mapViewportKey !== nextKey) {
       clearMapViewRange();
       renderMap();

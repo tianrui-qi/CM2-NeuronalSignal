@@ -147,19 +147,6 @@ function formatQcBound(value, side) {
   return `${formatQcZValue(value)} STD`;
 }
 
-function formatQcRangeSummary(metricKey) {
-  if (metricKey === BLUEPRINT_NONE) {
-    return "";
-  }
-  const range = getQcRange(metricKey);
-  if (!isQcRangeActive(range)) {
-    return "";
-  }
-  const lower = isLowerQcUnbounded(range.lowerZ) ? "N/A" : formatQcZValue(range.lowerZ);
-  const upper = isUpperQcUnbounded(range.upperZ) ? "N/A" : formatQcZValue(range.upperZ);
-  return `[${lower}, ${upper}) STD`;
-}
-
 function closeBlueprintMenu() {
   const menu = document.getElementById("blueprint-menu");
   const button = document.getElementById("blueprint-select");
@@ -197,9 +184,8 @@ function selectBlueprintMetric(metricKey) {
 function renderBlueprintControl() {
   const button = document.getElementById("blueprint-select");
   const label = document.getElementById("blueprint-select-label");
-  const rangeLabel = document.getElementById("blueprint-select-range");
   const menu = document.getElementById("blueprint-menu");
-  if (!button || !label || !rangeLabel || !menu) {
+  if (!button || !label || !menu) {
     return;
   }
   const currentValue = state.activeBlueprintMetric;
@@ -208,7 +194,6 @@ function renderBlueprintControl() {
   button.value = selectedValue;
   button.dataset.value = selectedValue;
   label.textContent = getBlueprintMetricLabel(selectedValue);
-  rangeLabel.textContent = formatQcRangeSummary(selectedValue);
   menu.innerHTML = "";
 
   const optionItems = [
@@ -227,12 +212,7 @@ function renderBlueprintControl() {
     optionLabel.className = "blueprint-option-label";
     optionLabel.textContent = item.label;
 
-    const optionRange = document.createElement("span");
-    optionRange.className = "blueprint-option-range";
-    optionRange.textContent = formatQcRangeSummary(item.key);
-
     option.appendChild(optionLabel);
-    option.appendChild(optionRange);
     option.addEventListener("click", (event) => {
       event.stopPropagation();
       closeBlueprintMenu();
@@ -261,9 +241,20 @@ function updateQcRangeFill(fillEl, range) {
   }
   const lowerPercent = qcZToPercent(range.lowerZ);
   const upperPercent = qcZToPercent(range.upperZ);
-  fillEl.style.left = "0";
-  fillEl.style.right = "0";
-  fillEl.style.clipPath = `inset(0 ${100 - upperPercent}% 0 ${lowerPercent}%)`;
+  if (fillEl.classList.contains("qc-color-fill")) {
+    const middlePercent = (lowerPercent + upperPercent) / 2;
+    fillEl.style.left = "0";
+    fillEl.style.right = "0";
+    fillEl.style.background = `linear-gradient(90deg,
+      rgba(202, 0, 32, 0.95) 0%,
+      rgba(202, 0, 32, 0.95) ${lowerPercent}%,
+      rgba(247, 247, 247, 0.95) ${middlePercent}%,
+      rgba(5, 113, 176, 0.95) ${upperPercent}%,
+      rgba(5, 113, 176, 0.95) 100%)`;
+    return;
+  }
+  fillEl.style.left = `${lowerPercent}%`;
+  fillEl.style.right = `${100 - upperPercent}%`;
 }
 
 function zToMetricAxisValue(zValue, stats) {
@@ -316,17 +307,77 @@ function snapMetricAxisValue(value, step) {
   return Number(snapped.toFixed(Math.min(8, digits + 2)));
 }
 
-function absoluteSliderValueToQcZ(value, stats, side) {
+function absoluteSliderValueToQcZ(value, stats, side, { allowUnbounded = true } = {}) {
   const rawZ = sliderValueToQcZ(value);
-  if (side === "lower" && isLowerQcUnbounded(rawZ)) {
+  if (allowUnbounded && side === "lower" && isLowerQcUnbounded(rawZ)) {
     return QC_RANGE_MIN_Z;
   }
-  if (side === "upper" && isUpperQcUnbounded(rawZ)) {
+  if (allowUnbounded && side === "upper" && isUpperQcUnbounded(rawZ)) {
     return QC_RANGE_MAX_Z;
   }
   const step = absoluteStepForStats(stats);
   const axisValue = snapMetricAxisValue(zToMetricAxisValue(rawZ, stats), step);
   return clampQcZ(metricAxisValueToZ(axisValue, stats));
+}
+
+function getStdQcPositions({ allowUnbounded = false } = {}) {
+  const positions = [];
+  if (allowUnbounded) {
+    positions.push(QC_RANGE_MIN_Z);
+  }
+  for (let value = Math.ceil(QC_RANGE_MIN_Z); value <= Math.floor(QC_RANGE_MAX_Z); value += 1) {
+    positions.push(value);
+  }
+  if (allowUnbounded) {
+    positions.push(QC_RANGE_MAX_Z);
+  }
+  return positions;
+}
+
+function nearestQcPosition(value, positions) {
+  return positions.reduce((nearest, candidate) => (
+    Math.abs(candidate - value) < Math.abs(nearest - value) ? candidate : nearest
+  ), positions[0]);
+}
+
+function stdSliderValueToQcZ(value, side, { allowUnbounded = false } = {}) {
+  const rawZ = sliderValueToQcZ(value);
+  if (allowUnbounded && side === "lower" && isLowerQcUnbounded(rawZ)) {
+    return QC_RANGE_MIN_Z;
+  }
+  if (allowUnbounded && side === "upper" && isUpperQcUnbounded(rawZ)) {
+    return QC_RANGE_MAX_Z;
+  }
+  return nearestQcPosition(rawZ, getStdQcPositions({ allowUnbounded }));
+}
+
+function sliderValueToActiveQcZ(value, stats, side, { allowUnbounded = false } = {}) {
+  if (state.qcThresholdMode === QC_THRESHOLD_MODE_RAW) {
+    return absoluteSliderValueToQcZ(value, stats, side, { allowUnbounded });
+  }
+  return stdSliderValueToQcZ(value, side, { allowUnbounded });
+}
+
+function enforceStdQcRangeOrder(lowerZ, upperZ, changedHandle, { allowUnbounded = false } = {}) {
+  const positions = getStdQcPositions({ allowUnbounded });
+  let lowerIndex = positions.indexOf(nearestQcPosition(lowerZ, positions));
+  let upperIndex = positions.indexOf(nearestQcPosition(upperZ, positions));
+  if (lowerIndex >= upperIndex) {
+    if (changedHandle === "lower") {
+      if (upperIndex > 0) {
+        lowerIndex = upperIndex - 1;
+      } else {
+        lowerIndex = 0;
+        upperIndex = 1;
+      }
+    } else if (lowerIndex < positions.length - 1) {
+      upperIndex = lowerIndex + 1;
+    } else {
+      lowerIndex = positions.length - 2;
+      upperIndex = positions.length - 1;
+    }
+  }
+  return { lowerZ: positions[lowerIndex], upperZ: positions[upperIndex] };
 }
 
 function formatMetricAxisValue(value, step = null) {
@@ -361,11 +412,260 @@ function formatAbsoluteBound(zValue, side, stats, step) {
 }
 
 function hideQcRangeControl() {
+  document.getElementById("blueprint-color-range")?.classList.add("hidden");
   document.getElementById("blueprint-qc-range")?.classList.add("hidden");
 }
 
 function setQcCardEmpty(isEmpty) {
   document.querySelector(".qc-card")?.classList.toggle("is-empty", isEmpty);
+}
+
+const QC_PLOT_DOWNLOADS = {
+  svg: "download-qc-svg-btn",
+  png: "download-qc-png-btn",
+};
+
+const QC_EXPORT_COLORSCALE = [
+  [0, "rgb(202, 0, 32)"],
+  [0.5, "rgb(247, 247, 247)"],
+  [1, "rgb(5, 113, 176)"],
+];
+
+function setQcDownloadEnabled(enabled) {
+  const row = document.getElementById("qc-download-row");
+  row?.classList.toggle("hidden", !enabled);
+  for (const buttonId of Object.values(QC_PLOT_DOWNLOADS)) {
+    const button = document.getElementById(buttonId);
+    if (button) {
+      button.disabled = !enabled;
+    }
+  }
+}
+
+function getQcExportRangeLabels() {
+  return {
+    lower: document.getElementById("qc-color-lower-label")?.textContent?.trim() || "Min",
+    upper: document.getElementById("qc-color-upper-label")?.textContent?.trim() || "Max",
+  };
+}
+
+function makeQcExportData(plot) {
+  const data = clonePlotlyObject(plot.data ?? []).map((trace, index) => {
+    if (index !== 1 || trace?.type !== "scatter") {
+      return trace;
+    }
+    return {
+      ...trace,
+      line: {
+        ...(trace.line ?? {}),
+        color: "rgb(32, 30, 27)",
+      },
+    };
+  });
+  const stripX = Array.from({ length: 128 }, (_, index) => index / 127);
+  data.push({
+    type: "heatmap",
+    x: stripX,
+    y: [0],
+    z: [stripX],
+    xaxis: "x2",
+    yaxis: "y2",
+    zmin: 0,
+    zmax: 1,
+    colorscale: QC_EXPORT_COLORSCALE,
+    showscale: false,
+    hoverinfo: "skip",
+  });
+  return data;
+}
+
+function makeQcExportLayout(plot, width, height) {
+  const layout = clonePlotlyObject(plot.layout ?? {});
+  const labels = getQcExportRangeLabels();
+  layout.width = width;
+  layout.height = height;
+  layout.margin = { l: 40, r: 18, t: 18, b: 52 };
+  layout.paper_bgcolor = "rgb(255, 255, 255)";
+  layout.plot_bgcolor = "rgb(255, 255, 255)";
+  layout.font = {
+    ...(layout.font ?? {}),
+    color: "rgb(32, 30, 27)",
+  };
+  layout.xaxis = {
+    ...(layout.xaxis ?? {}),
+    domain: [0, 1],
+    anchor: "y",
+    color: "rgb(32, 30, 27)",
+    title: {
+      ...(layout.xaxis?.title ?? {}),
+      font: {
+        ...(layout.xaxis?.title?.font ?? {}),
+        color: "rgb(32, 30, 27)",
+      },
+    },
+    gridcolor: "rgba(32, 30, 27, 0.12)",
+    range: clonePlotlyObject(plot._fullLayout?.xaxis?.range ?? layout.xaxis?.range),
+  };
+  layout.yaxis = {
+    ...(layout.yaxis ?? {}),
+    domain: [0.24, 1],
+    anchor: "x",
+    color: "rgb(32, 30, 27)",
+    gridcolor: "rgba(32, 30, 27, 0.12)",
+  };
+  layout.xaxis2 = {
+    domain: [0, 1],
+    anchor: "y2",
+    range: [0, 1],
+    fixedrange: true,
+    showgrid: false,
+    zeroline: false,
+    ticks: "outside",
+    tickmode: "array",
+    tickvals: [0, 1],
+    ticktext: [labels.lower, labels.upper],
+    tickfont: { color: "rgb(32, 30, 27)", size: 11 },
+  };
+  layout.yaxis2 = {
+    domain: [0.04, 0.095],
+    anchor: "x2",
+    fixedrange: true,
+    visible: false,
+  };
+  layout.shapes = clonePlotlyObject(layout.shapes ?? []).map((shape) => ({
+    ...shape,
+    line: {
+      ...(shape.line ?? {}),
+      color: "rgba(32, 30, 27, 0.5)",
+      width: 1,
+      dash: "dot",
+    },
+  }));
+  return layout;
+}
+
+async function exportQcPlotImage(plot, format) {
+  const currentSize = getPlotExportSize(plot);
+  const width = Math.max(520, currentSize.width);
+  const height = Math.max(360, currentSize.height + 90);
+  const exportDiv = document.createElement("div");
+  exportDiv.style.position = "fixed";
+  exportDiv.style.left = "-10000px";
+  exportDiv.style.top = "0";
+  exportDiv.style.width = `${width}px`;
+  exportDiv.style.height = `${height}px`;
+  document.body.appendChild(exportDiv);
+  try {
+    await Plotly.newPlot(
+      exportDiv,
+      makeQcExportData(plot),
+      makeQcExportLayout(plot, width, height),
+      { staticPlot: true, displaylogo: false, displayModeBar: false, responsive: false }
+    );
+    return await Plotly.toImage(exportDiv, { format, width, height });
+  } finally {
+    Plotly.purge(exportDiv);
+    exportDiv.remove();
+  }
+}
+
+async function downloadQcPlotImage(format) {
+  const plot = document.getElementById("blueprint-stats-plot");
+  if (!plot || !plot.data?.length || !getActiveBlueprintSpec()) {
+    setStatus("No quality-control histogram is available to download.", true);
+    window.setTimeout(() => setStatus(""), 1800);
+    return;
+  }
+  const button = document.getElementById(QC_PLOT_DOWNLOADS[format]);
+  const filename = `cm2-qc-${sanitizeFilenamePart(state.activeBlueprintMetric)}.${format}`;
+  button?.setAttribute("aria-busy", "true");
+  button?.setAttribute("disabled", "true");
+  try {
+    const saveTarget = await chooseImageSaveTarget(filename, format);
+    if (saveTarget?.aborted) {
+      return;
+    }
+    const dataUrl = await exportQcPlotImage(plot, format);
+    await saveImageBlob(dataUrlToBlob(dataUrl, format), filename, saveTarget);
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message ?? `Failed to download ${format.toUpperCase()}.`, true);
+    window.setTimeout(() => setStatus(""), 2400);
+  } finally {
+    button?.removeAttribute("aria-busy");
+    setQcDownloadEnabled(Boolean(plot.data?.length));
+  }
+}
+
+function wireQcDownloadButtons() {
+  for (const [format, buttonId] of Object.entries(QC_PLOT_DOWNLOADS)) {
+    const button = document.getElementById(buttonId);
+    if (!button || button.dataset.downloadWired === "true") {
+      continue;
+    }
+    button.addEventListener("click", () => downloadQcPlotImage(format));
+    button.dataset.downloadWired = "true";
+  }
+  setQcDownloadEnabled(false);
+}
+
+function configureQcSliderPair(lowerInput, upperInput, range) {
+  if (!lowerInput || !upperInput) {
+    return;
+  }
+  for (const input of [lowerInput, upperInput]) {
+    input.min = String(QC_SLIDER_MIN);
+    input.max = String(QC_SLIDER_MAX);
+    input.step = "1";
+  }
+  lowerInput.value = String(qcZToSliderValue(range.lowerZ));
+  upperInput.value = String(qcZToSliderValue(range.upperZ));
+}
+
+function renderBlueprintColorRangeControl(spec = getActiveBlueprintSpec()) {
+  const control = document.getElementById("blueprint-color-range");
+  if (!control || !spec) {
+    control?.classList.add("hidden");
+    return;
+  }
+  const range = getBlueprintColorRange(spec.key);
+  const lowerInput = document.getElementById("qc-color-lower-input");
+  const upperInput = document.getElementById("qc-color-upper-input");
+  const { stats } = buildBlueprintMetricValues(spec);
+  const absoluteStep = absoluteStepForStats(stats);
+  const rawMode = state.qcThresholdMode === QC_THRESHOLD_MODE_RAW;
+  configureQcSliderPair(lowerInput, upperInput, range);
+  lowerInput.classList.remove("is-unbounded");
+  upperInput.classList.remove("is-unbounded");
+  document.getElementById("qc-color-lower-label").textContent = rawMode
+    ? formatMetricAxisValue(zToMetricAxisValue(range.lowerZ, stats), absoluteStep)
+    : `${formatQcZValue(range.lowerZ)} STD`;
+  document.getElementById("qc-color-upper-label").textContent = rawMode
+    ? formatMetricAxisValue(zToMetricAxisValue(range.upperZ, stats), absoluteStep)
+    : `${formatQcZValue(range.upperZ)} STD`;
+  updateQcRangeFill(document.getElementById("qc-color-fill"), range);
+  control.classList.remove("hidden");
+}
+
+function renderQcUnitModeControl(enabled = Boolean(getActiveBlueprintSpec())) {
+  const activeMode = normalizeQcThresholdMode(state.qcThresholdMode);
+  state.qcThresholdMode = activeMode;
+  for (const button of document.querySelectorAll("[data-qc-unit-mode]")) {
+    const isActive = button.dataset.qcUnitMode === activeMode;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-checked", String(isActive));
+    button.disabled = !enabled;
+  }
+}
+
+function setQcThresholdMode(mode) {
+  const nextMode = normalizeQcThresholdMode(mode);
+  if (nextMode === state.qcThresholdMode) {
+    return;
+  }
+  state.qcThresholdMode = nextMode;
+  saveUiState();
+  renderBlueprintStats();
 }
 
 function renderQcRangeControl(spec = getActiveBlueprintSpec()) {
@@ -378,78 +678,98 @@ function renderQcRangeControl(spec = getActiveBlueprintSpec()) {
   const range = getQcRange(spec.key);
   const lowerInput = document.getElementById("qc-range-lower-input");
   const upperInput = document.getElementById("qc-range-upper-input");
-  const absoluteLowerInput = document.getElementById("qc-absolute-lower-input");
-  const absoluteUpperInput = document.getElementById("qc-absolute-upper-input");
   const lowerLabel = document.getElementById("qc-range-lower-label");
   const upperLabel = document.getElementById("qc-range-upper-label");
-  const absoluteLowerLabel = document.getElementById("qc-absolute-lower-label");
-  const absoluteUpperLabel = document.getElementById("qc-absolute-upper-label");
   const fill = document.getElementById("qc-range-fill");
-  const absoluteFill = document.getElementById("qc-absolute-fill");
   const { stats } = buildBlueprintMetricValues(spec);
   const absoluteStep = absoluteStepForStats(stats);
-  const lowerSliderValue = qcZToSliderValue(range.lowerZ);
-  const upperSliderValue = qcZToSliderValue(range.upperZ);
+  const rawMode = state.qcThresholdMode === QC_THRESHOLD_MODE_RAW;
 
-  for (const input of [lowerInput, upperInput]) {
-    input.min = String(QC_SLIDER_MIN);
-    input.max = String(QC_SLIDER_MAX);
-    input.step = "1";
-  }
-  for (const input of [absoluteLowerInput, absoluteUpperInput]) {
-    input.min = String(QC_SLIDER_MIN);
-    input.max = String(QC_SLIDER_MAX);
-    input.step = "1";
-  }
-  for (const input of [lowerInput]) {
-    input.value = String(lowerSliderValue);
-    input.classList.toggle("is-unbounded", isLowerQcUnbounded(range.lowerZ));
-  }
-  for (const input of [upperInput]) {
-    input.value = String(upperSliderValue);
-    input.classList.toggle("is-unbounded", isUpperQcUnbounded(range.upperZ));
-  }
-  absoluteLowerInput.value = String(lowerSliderValue);
-  absoluteUpperInput.value = String(upperSliderValue);
-  absoluteLowerInput.classList.toggle("is-unbounded", isLowerQcUnbounded(range.lowerZ));
-  absoluteUpperInput.classList.toggle("is-unbounded", isUpperQcUnbounded(range.upperZ));
-  lowerLabel.textContent = formatQcBound(range.lowerZ, "lower");
-  upperLabel.textContent = formatQcBound(range.upperZ, "upper");
-  absoluteLowerLabel.textContent = formatAbsoluteBound(range.lowerZ, "lower", stats, absoluteStep);
-  absoluteUpperLabel.textContent = formatAbsoluteBound(range.upperZ, "upper", stats, absoluteStep);
+  configureQcSliderPair(lowerInput, upperInput, range);
+  lowerInput.classList.toggle("is-unbounded", isLowerQcUnbounded(range.lowerZ));
+  upperInput.classList.toggle("is-unbounded", isUpperQcUnbounded(range.upperZ));
+  lowerLabel.textContent = rawMode
+    ? formatAbsoluteBound(range.lowerZ, "lower", stats, absoluteStep)
+    : formatQcBound(range.lowerZ, "lower");
+  upperLabel.textContent = rawMode
+    ? formatAbsoluteBound(range.upperZ, "upper", stats, absoluteStep)
+    : formatQcBound(range.upperZ, "upper");
   updateQcRangeFill(fill, range);
-  updateQcRangeFill(absoluteFill, range);
   control.classList.remove("hidden");
 }
 
-function updateActiveQcRangeFromInputs(changedHandle, sourcePrefix = "qc-range") {
+function renderQcControls(spec = getActiveBlueprintSpec()) {
+  renderQcUnitModeControl(Boolean(spec));
+  if (!spec) {
+    hideQcRangeControl();
+    return;
+  }
+  renderBlueprintColorRangeControl(spec);
+  renderQcRangeControl(spec);
+}
+
+function updateActiveBlueprintColorRangeFromInputs(changedHandle) {
   const spec = getActiveBlueprintSpec();
   if (!spec) {
     return;
   }
-  const lowerInput = document.getElementById(`${sourcePrefix}-lower-input`);
-  const upperInput = document.getElementById(`${sourcePrefix}-upper-input`);
-  const fromAbsolute = sourcePrefix === "qc-absolute";
+  const lowerInput = document.getElementById("qc-color-lower-input");
+  const upperInput = document.getElementById("qc-color-upper-input");
   const { stats } = buildBlueprintMetricValues(spec);
-  const stepZ = fromAbsolute
-    ? absoluteStepForStats(stats) / Math.max(stats.std, 1e-12)
-    : QC_RANGE_STEP_Z;
-  let lowerZ = fromAbsolute
-    ? absoluteSliderValueToQcZ(lowerInput.value, stats, "lower")
-    : clampQcZ(sliderValueToQcZ(lowerInput.value), { snap: true });
-  let upperZ = fromAbsolute
-    ? absoluteSliderValueToQcZ(upperInput.value, stats, "upper")
-    : clampQcZ(sliderValueToQcZ(upperInput.value), { snap: true });
-  if (changedHandle === "lower") {
-    lowerZ = Math.min(lowerZ, upperZ - stepZ);
-  } else {
-    upperZ = Math.max(upperZ, lowerZ + stepZ);
+  let lowerZ = sliderValueToActiveQcZ(lowerInput.value, stats, "lower");
+  let upperZ = sliderValueToActiveQcZ(upperInput.value, stats, "upper");
+  if (state.qcThresholdMode === QC_THRESHOLD_MODE_STD) {
+    ({ lowerZ, upperZ } = enforceStdQcRangeOrder(lowerZ, upperZ, changedHandle));
+  } else if (lowerZ >= upperZ - QC_RANGE_EPS) {
+    const stepZ = absoluteStepForStats(stats) / Math.max(stats.std, 1e-12);
+    if (changedHandle === "lower") {
+      lowerZ = upperZ - stepZ;
+    } else {
+      upperZ = lowerZ + stepZ;
+    }
   }
   lowerZ = clampQcZ(lowerZ);
   upperZ = clampQcZ(upperZ);
+  if (changedHandle === "lower" && lowerZ >= upperZ) {
+    lowerZ = clampQcZ(upperZ - QC_RANGE_STEP_Z);
+  } else if (changedHandle === "upper" && upperZ <= lowerZ) {
+    upperZ = clampQcZ(lowerZ + QC_RANGE_STEP_Z);
+  }
+  setBlueprintColorRange(spec.key, { lowerZ, upperZ });
+  saveUiState();
+  renderBlueprintStats();
+  renderMap();
+}
+
+function updateActiveQcRangeFromInputs(changedHandle) {
+  const spec = getActiveBlueprintSpec();
+  if (!spec) {
+    return;
+  }
+  const lowerInput = document.getElementById("qc-range-lower-input");
+  const upperInput = document.getElementById("qc-range-upper-input");
+  const { stats } = buildBlueprintMetricValues(spec);
+  let lowerZ = sliderValueToActiveQcZ(lowerInput.value, stats, "lower", { allowUnbounded: true });
+  let upperZ = sliderValueToActiveQcZ(upperInput.value, stats, "upper", { allowUnbounded: true });
+  if (state.qcThresholdMode === QC_THRESHOLD_MODE_STD) {
+    ({ lowerZ, upperZ } = enforceStdQcRangeOrder(lowerZ, upperZ, changedHandle, { allowUnbounded: true }));
+  } else if (lowerZ >= upperZ - QC_RANGE_EPS) {
+    const stepZ = absoluteStepForStats(stats) / Math.max(stats.std, 1e-12);
+    if (changedHandle === "lower") {
+      lowerZ = upperZ - stepZ;
+    } else {
+      upperZ = lowerZ + stepZ;
+    }
+  }
+  lowerZ = clampQcZ(lowerZ);
+  upperZ = clampQcZ(upperZ);
+  if (changedHandle === "lower" && lowerZ >= upperZ) {
+    lowerZ = clampQcZ(upperZ - QC_RANGE_STEP_Z);
+  } else if (changedHandle === "upper" && upperZ <= lowerZ) {
+    upperZ = clampQcZ(lowerZ + QC_RANGE_STEP_Z);
+  }
   setQcRange(spec.key, { lowerZ, upperZ });
   saveUiState();
-  renderBlueprintControl();
   renderQcRangeControl(spec);
   renderWorkflowSummaries();
   renderRoiWorkflowPanel();
@@ -466,6 +786,8 @@ function renderBlueprintStats() {
   const spec = getActiveBlueprintSpec();
   if (!spec) {
     plot.classList.add("hidden");
+    setQcDownloadEnabled(false);
+    renderQcUnitModeControl(false);
     hideQcRangeControl();
     setQcCardEmpty(true);
     Plotly.purge(plot);
@@ -476,6 +798,8 @@ function renderBlueprintStats() {
   const histogram = buildHistogram(values, stats);
   if (!histogram) {
     plot.classList.add("hidden");
+    setQcDownloadEnabled(false);
+    renderQcUnitModeControl(false);
     hideQcRangeControl();
     setQcCardEmpty(true);
     Plotly.purge(plot);
@@ -484,6 +808,9 @@ function renderBlueprintStats() {
   const curveX = Array.from({ length: 240 }, (_, idx) => histogram.viewMin + (idx / 239) * (histogram.viewMax - histogram.viewMin));
   const curveY = curveX.map((x) => gaussianPdf(x, stats.mean, stats.std) * histogram.totalCount * histogram.binWidth);
   const maxY = Math.max(...histogram.counts, ...curveY, 1e-12);
+  const colorRange = getBlueprintColorRange(spec.key);
+  const colorMin = zToMetricAxisValue(colorRange.lowerZ, stats);
+  const colorMax = zToMetricAxisValue(colorRange.upperZ, stats);
   const sigmaShapes = [];
   for (let offset = -3; offset <= 3; offset += 1) {
     const x = stats.mean + offset * stats.std;
@@ -496,17 +823,17 @@ function renderBlueprintStats() {
       y0: 0,
       y1: 1,
       line: {
-        color: offset === 0 ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.38)",
-        width: offset === 0 ? 1.6 : 1,
-        dash: offset === 0 ? "solid" : "dot",
+        color: "rgba(255,255,255,0.38)",
+        width: 1,
+        dash: "dot",
       },
     });
   }
 
-  const barColors = histogram.centers.map((value) => blueprintColorForValue(value, stats.mean, stats.std));
+  const barColors = histogram.centers.map((value) => blueprintColorForValue(value, colorMin, colorMax));
   plot.classList.remove("hidden");
   setQcCardEmpty(false);
-  renderQcRangeControl(spec);
+  renderQcControls(spec);
   Plotly.react(
     plot,
     [
@@ -531,8 +858,8 @@ function renderBlueprintStats() {
       },
     ],
     {
-      margin: { l: 28, r: 18, t: 6, b: 38 },
-      height: 260,
+      margin: { l: 0, r: 0, t: 4, b: 30 },
+      height: 130,
       paper_bgcolor: "rgba(0,0,0,0)",
       plot_bgcolor: "rgba(0,0,0,0)",
       barmode: "overlay",
@@ -541,7 +868,7 @@ function renderBlueprintStats() {
       xaxis: {
         title: { text: blueprintAxisTitle(spec), font: { color: "#f7f1e7", size: 12 }, standoff: 2 },
         color: "#f7f1e7",
-        gridcolor: "rgba(255,245,228,0.12)",
+        showgrid: false,
         fixedrange: true,
         zeroline: false,
         range: [histogram.viewMin, histogram.viewMax],
@@ -551,6 +878,8 @@ function renderBlueprintStats() {
         color: "#f7f1e7",
         gridcolor: "rgba(255,245,228,0.12)",
         fixedrange: true,
+        showticklabels: false,
+        ticks: "",
         zeroline: false,
         rangemode: "tozero",
         range: [0, maxY * 1.08],
@@ -564,5 +893,8 @@ function renderBlueprintStats() {
       scrollZoom: false,
       staticPlot: false,
     }
-  ).then(scheduleBlueprintStatsReflow);
+  ).then(() => {
+    setQcDownloadEnabled(true);
+    scheduleBlueprintStatsReflow();
+  });
 }

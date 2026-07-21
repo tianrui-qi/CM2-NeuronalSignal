@@ -35,7 +35,9 @@ function buildMapMarkerStyle(pointIndices) {
   }
 
   const { values, stats } = blueprintValues;
-  const half = BLUEPRINT_SIGMA_RANGE * stats.std;
+  const colorRange = getBlueprintColorRange(blueprintSpec.key);
+  const colorMin = stats.mean + colorRange.lowerZ * stats.std;
+  const colorMax = stats.mean + colorRange.upperZ * stats.std;
   return {
     color: pointIndices.map((index) => values[index]),
     lineColor: line,
@@ -44,9 +46,8 @@ function buildMapMarkerStyle(pointIndices) {
     showscale: false,
     colorscale: BLUEPRINT_COLOR_SCALE,
     reversescale: true,
-    cmin: stats.mean - half,
-    cmax: stats.mean + half,
-    cmid: stats.mean,
+    cmin: colorMin,
+    cmax: colorMax,
   };
 }
 

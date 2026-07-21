@@ -43,10 +43,20 @@
   --space-6: 14px;
   --space-7: 18px;
 
+  /* Shared rhythm for panel insets and spacing between sibling controls. */
+  --ui-spacing: var(--space-3);
+
   --font-size-xs: 11px;
   --font-size-sm: 12px;
   --font-size-md: 13px;
   --font-size-lg: 15px;
+
+  --control-height: 30px;
+  --section-header-height: 30px;
+  --table-header-height: 20px;
+  --inline-action-size: 20px;
+  --modal-icon-size: 30px;
+  --slider-hit-height: 18px;
 
   --trace-strip-width: 5px;
   --trace-strip-gap: 2px;

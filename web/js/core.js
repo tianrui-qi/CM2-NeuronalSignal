@@ -61,6 +61,8 @@ const BLUEPRINT_NONE = "none";
 const BLUEPRINT_COLOR_SCALE = "RdBu";
 const BLUEPRINT_SIGMA_RANGE = 3;
 const BLUEPRINT_STATS_SIGMA_RANGE = 3.5;
+const QC_THRESHOLD_MODE_STD = "std";
+const QC_THRESHOLD_MODE_RAW = "raw";
 const QC_RANGE_MIN_Z = -BLUEPRINT_STATS_SIGMA_RANGE;
 const QC_RANGE_MAX_Z = BLUEPRINT_STATS_SIGMA_RANGE;
 const QC_RANGE_STEP_Z = 0.1;
@@ -111,7 +113,9 @@ const state = {
   activeHeatmapColormap: "gray",
   activeBackgroundKey: null,
   activeBlueprintMetric: BLUEPRINT_NONE,
+  blueprintColorRanges: {},
   qcRanges: {},
+  qcThresholdMode: QC_THRESHOLD_MODE_STD,
   regionPolygons: [],
   regionDraft: { active: false, points: [], polygons: [] },
   regionPreview: null,
@@ -161,23 +165,44 @@ function applyOverlayWidth() {
   overlay.style.width = `${state.overlayWidth}px`;
 }
 
-function schedulePanelPlotResize() {
+function schedulePanelPlotResize({ refreshTemporal = false } = {}) {
+  schedulePanelPlotResize.refreshTemporal = Boolean(schedulePanelPlotResize.refreshTemporal)
+    || refreshTemporal;
   if (schedulePanelPlotResize.queued) {
     return;
   }
   schedulePanelPlotResize.queued = true;
   requestAnimationFrame(() => {
-    schedulePanelPlotResize.queued = false;
-    for (const id of ["blueprint-stats-plot", "c-trace-plot", "c-heatmap-plot"]) {
-      const plot = document.getElementById(id);
-      if (plot && plot.offsetWidth > 0 && plot.offsetHeight > 0) {
+    requestAnimationFrame(() => {
+      schedulePanelPlotResize.queued = false;
+      const shouldRefreshTemporal = Boolean(schedulePanelPlotResize.refreshTemporal);
+      schedulePanelPlotResize.refreshTemporal = false;
+
+      const qcPlot = document.getElementById("blueprint-stats-plot");
+      if (qcPlot && qcPlot.offsetWidth > 0 && qcPlot.offsetHeight > 0) {
         try {
-          Plotly.Plots.resize(plot);
+          Plotly.Plots.resize(qcPlot);
         } catch (error) {
           console.warn(error);
         }
       }
-    }
+
+      if (shouldRefreshTemporal && typeof updatePlots === "function") {
+        updatePlots();
+        return;
+      }
+
+      for (const id of ["c-trace-plot", "c-heatmap-plot"]) {
+        const plot = document.getElementById(id);
+        if (plot && plot.offsetWidth > 0 && plot.offsetHeight > 0) {
+          try {
+            Plotly.Plots.resize(plot);
+          } catch (error) {
+            console.warn(error);
+          }
+        }
+      }
+    });
   });
 }
 
@@ -328,6 +353,10 @@ function defaultQcRange() {
   return { lowerZ: QC_RANGE_MIN_Z, upperZ: QC_RANGE_MAX_Z };
 }
 
+function defaultBlueprintColorRange() {
+  return { lowerZ: -BLUEPRINT_SIGMA_RANGE, upperZ: BLUEPRINT_SIGMA_RANGE };
+}
+
 function normalizeQcRange(range) {
   if (!range || typeof range !== "object") {
     return defaultQcRange();
@@ -357,6 +386,53 @@ function normalizeQcRanges(ranges) {
     }
   }
   return normalized;
+}
+
+function normalizeBlueprintColorRange(range) {
+  if (!range || typeof range !== "object") {
+    return defaultBlueprintColorRange();
+  }
+  let lowerZ = clampQcZ(range.lowerZ);
+  let upperZ = clampQcZ(range.upperZ);
+  if (!Number.isFinite(lowerZ)) {
+    lowerZ = -BLUEPRINT_SIGMA_RANGE;
+  }
+  if (!Number.isFinite(upperZ)) {
+    upperZ = BLUEPRINT_SIGMA_RANGE;
+  }
+  if (lowerZ > upperZ) {
+    [lowerZ, upperZ] = [upperZ, lowerZ];
+  }
+  if (upperZ - lowerZ < QC_RANGE_STEP_Z) {
+    upperZ = clampQcZ(lowerZ + QC_RANGE_STEP_Z);
+    lowerZ = clampQcZ(upperZ - QC_RANGE_STEP_Z);
+  }
+  return { lowerZ, upperZ };
+}
+
+function normalizeBlueprintColorRanges(ranges) {
+  const normalized = {};
+  if (!ranges || typeof ranges !== "object") {
+    return normalized;
+  }
+  for (const spec of getAvailableBlueprintSpecs()) {
+    if (Object.prototype.hasOwnProperty.call(ranges, spec.key)) {
+      normalized[spec.key] = normalizeBlueprintColorRange(ranges[spec.key]);
+    }
+  }
+  return normalized;
+}
+
+function getBlueprintColorRange(metricKey) {
+  return normalizeBlueprintColorRange(state.blueprintColorRanges[metricKey]);
+}
+
+function setBlueprintColorRange(metricKey, nextRange) {
+  state.blueprintColorRanges[metricKey] = normalizeBlueprintColorRange(nextRange);
+}
+
+function normalizeQcThresholdMode(mode) {
+  return mode === QC_THRESHOLD_MODE_RAW ? QC_THRESHOLD_MODE_RAW : QC_THRESHOLD_MODE_STD;
 }
 
 function getQcRange(metricKey) {
@@ -498,7 +574,9 @@ function serializeUiState() {
     activeHeatmapColormap: state.activeHeatmapColormap,
     activeBackgroundKey: state.activeBackgroundKey,
     activeBlueprintMetric: state.activeBlueprintMetric,
+    blueprintColorRanges: state.blueprintColorRanges,
     qcRanges: state.qcRanges,
+    qcThresholdMode: state.qcThresholdMode,
     regionPolygons: state.regionPolygons,
     activeWorkflowSection: state.activeWorkflowSection,
     openSections: state.openSections,
@@ -642,7 +720,9 @@ function applyUiState(parsed) {
     if (isAvailableBlueprintMetric(parsed.activeBlueprintMetric)) {
       state.activeBlueprintMetric = parsed.activeBlueprintMetric;
     }
+    state.blueprintColorRanges = normalizeBlueprintColorRanges(parsed.blueprintColorRanges);
     state.qcRanges = normalizeQcRanges(parsed.qcRanges);
+    state.qcThresholdMode = normalizeQcThresholdMode(parsed.qcThresholdMode);
     state.activeWorkflowSection = normalizeWorkflowSection(
       parsed.activeWorkflowSection ?? parsed.activePanelTab,
       state.activeWorkflowSection
@@ -821,7 +901,9 @@ function ensureValidActiveBlueprintMetric() {
 }
 
 function ensureValidQcRanges() {
+  state.blueprintColorRanges = normalizeBlueprintColorRanges(state.blueprintColorRanges);
   state.qcRanges = normalizeQcRanges(state.qcRanges);
+  state.qcThresholdMode = normalizeQcThresholdMode(state.qcThresholdMode);
 }
 
 function ensureValidActiveRoi() {
@@ -851,8 +933,8 @@ function rgbString(rgb, alpha = 1) {
   return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
 }
 
-function blueprintColorForValue(value, mean, std) {
-  const z = clamp01((value - (mean - BLUEPRINT_SIGMA_RANGE * std)) / (2 * BLUEPRINT_SIGMA_RANGE * std));
+function blueprintColorForValue(value, lower, upper) {
+  const z = clamp01((value - lower) / Math.max(upper - lower, 1e-12));
   const red = [202, 0, 32];
   const mid = [247, 247, 247];
   const blue = [5, 113, 176];

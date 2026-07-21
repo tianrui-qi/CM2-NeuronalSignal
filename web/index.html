@@ -13,6 +13,7 @@
 
     <aside class="overlay-stack">
       <div id="workflow-panel" class="workflow-panel">
+        <div class="workflow-panel-content">
         <section id="background-section" class="glass-panel workflow-section" data-workflow-section="background">
           <button class="workflow-section-header" type="button" data-section-toggle="background">
             <span>Background</span>
@@ -29,34 +30,51 @@
             <span id="qc-section-summary" class="workflow-section-summary"></span>
           </button>
           <div class="workflow-section-body qc-card">
-            <div id="blueprint-picker" class="blueprint-picker">
-              <button id="blueprint-select" class="blueprint-select" type="button" aria-haspopup="listbox" aria-expanded="false">
-                <span id="blueprint-select-label" class="blueprint-select-label">None</span>
-                <span id="blueprint-select-range" class="blueprint-select-range"></span>
-              </button>
-              <div id="blueprint-menu" class="blueprint-menu hidden" role="listbox" aria-label="Neuron Blueprint"></div>
+            <div class="qc-controls">
+              <div class="qc-control-row qc-unit-row">
+                <div id="blueprint-picker" class="blueprint-picker">
+                  <button id="blueprint-select" class="blueprint-select" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span id="blueprint-select-label" class="blueprint-select-label">None</span>
+                  </button>
+                  <div id="blueprint-menu" class="blueprint-menu hidden" role="listbox" aria-label="Neuron Blueprint"></div>
+                </div>
+                <div id="qc-unit-mode" class="qc-unit-toggle" role="radiogroup" aria-label="Quality control units">
+                  <button class="qc-unit-btn" type="button" data-qc-unit-mode="std" role="radio">STD</button>
+                  <button class="qc-unit-btn" type="button" data-qc-unit-mode="raw" role="radio">Raw</button>
+                </div>
+              </div>
+              <div id="blueprint-color-range" class="qc-inline-range qc-range-row hidden">
+                <div class="qc-range-values">
+                  <span id="qc-color-lower-label"></span>
+                  <span class="qc-range-label">Color Map</span>
+                  <span id="qc-color-upper-label"></span>
+                </div>
+                <div class="qc-range-slider">
+                  <div class="qc-range-track"></div>
+                  <div id="qc-color-fill" class="qc-range-fill qc-color-fill"></div>
+                  <input id="qc-color-lower-input" class="qc-range-input qc-range-input-lower" type="range" aria-label="Lower color mapping bound">
+                  <input id="qc-color-upper-input" class="qc-range-input qc-range-input-upper" type="range" aria-label="Upper color mapping bound">
+                </div>
+              </div>
+              <div id="blueprint-qc-range" class="qc-inline-range qc-range-row qc-threshold-range hidden">
+                <div class="qc-range-values">
+                  <span id="qc-range-lower-label"></span>
+                  <span class="qc-range-label">Threshold</span>
+                  <span id="qc-range-upper-label"></span>
+                </div>
+                <div class="qc-range-slider">
+                  <div class="qc-range-track"></div>
+                  <div id="qc-range-fill" class="qc-range-fill qc-threshold-fill"></div>
+                  <input id="qc-range-lower-input" class="qc-range-input qc-range-input-lower" type="range" aria-label="Lower threshold">
+                  <input id="qc-range-upper-input" class="qc-range-input qc-range-input-upper" type="range" aria-label="Upper threshold">
+                </div>
+              </div>
             </div>
             <div id="blueprint-stats-plot" class="blueprint-stats-plot hidden"></div>
-            <div id="blueprint-qc-range" class="qc-range-control hidden">
-              <div class="qc-range-values">
-                <span id="qc-range-lower-label"></span>
-                <span id="qc-range-upper-label"></span>
-              </div>
-              <div class="qc-range-slider">
-                <div class="qc-range-track"></div>
-                <div id="qc-range-fill" class="qc-range-fill"></div>
-                <input id="qc-range-lower-input" class="qc-range-input qc-range-input-lower" type="range">
-                <input id="qc-range-upper-input" class="qc-range-input qc-range-input-upper" type="range">
-              </div>
-              <div class="qc-range-values qc-absolute-values">
-                <span id="qc-absolute-lower-label"></span>
-                <span id="qc-absolute-upper-label"></span>
-              </div>
-              <div class="qc-range-slider qc-absolute-slider">
-                <div class="qc-range-track"></div>
-                <div id="qc-absolute-fill" class="qc-range-fill"></div>
-                <input id="qc-absolute-lower-input" class="qc-range-input qc-range-input-lower" type="range" aria-label="Lower absolute threshold">
-                <input id="qc-absolute-upper-input" class="qc-range-input qc-range-input-upper" type="range" aria-label="Upper absolute threshold">
+            <div id="qc-download-row" class="plot-download-row qc-download-row hidden">
+              <div class="plot-download-actions">
+                <button id="download-qc-svg-btn" class="mini-btn plot-download-btn" type="button">SVG</button>
+                <button id="download-qc-png-btn" class="mini-btn plot-download-btn" type="button">PNG</button>
               </div>
             </div>
           </div>
@@ -118,7 +136,10 @@
               <div id="trace-value-toggle" class="trace-source-toggle"></div>
             </div>
 
-            <div id="trace-operation-controls" class="trace-operation-controls hidden"></div>
+            <div id="trace-operation-row" class="trace-operation-row hidden">
+              <button id="trace-select-all-btn" class="mini-btn trace-select-all-btn" type="button">Select All</button>
+              <div id="trace-operation-controls" class="trace-operation-controls"></div>
+            </div>
             <div id="trace-scale-controls" class="trace-scale-controls hidden"></div>
 
             <section class="plot-panel trace-plot-panel">
@@ -126,7 +147,6 @@
                 <div id="c-trace-plot" class="plot-frame"></div>
               </div>
               <div class="plot-download-row trace-download-row">
-                <button id="trace-select-all-btn" class="mini-btn trace-select-all-btn" type="button">Select All</button>
                 <div class="plot-download-actions">
                   <button id="download-trace-svg-btn" class="mini-btn plot-download-btn" type="button">SVG</button>
                   <button id="download-trace-png-btn" class="mini-btn plot-download-btn" type="button">PNG</button>
@@ -135,6 +155,7 @@
             </section>
           </div>
         </section>
+        </div>
       </div>
 
       <div id="overlay-resizer" class="overlay-resizer" aria-hidden="true"></div>

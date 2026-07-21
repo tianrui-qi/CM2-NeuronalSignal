@@ -1,7 +1,7 @@
 .roi-workflow-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--ui-spacing);
   color: rgba(247, 241, 231, 0.82);
   font-size: var(--font-size-sm);
 }
@@ -11,9 +11,10 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 64px 72px 48px;
   align-items: center;
-  gap: var(--space-3);
-  min-height: 34px;
-  padding: var(--space-2) var(--space-3);
+  gap: var(--ui-spacing);
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0 var(--ui-spacing);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
   background: var(--surface-row);
@@ -27,7 +28,8 @@
 }
 
 .roi-row-header {
-  min-height: 24px;
+  height: var(--table-header-height);
+  min-height: var(--table-header-height);
   padding-top: 3px;
   padding-bottom: 3px;
   border-color: transparent;
@@ -57,7 +59,7 @@
 .roi-row-label {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--ui-spacing);
   min-width: 0;
   overflow: hidden;
 }
@@ -92,16 +94,17 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-1);
+  gap: var(--ui-spacing);
   min-width: 0;
 }
 
-.roi-row-action-btn {
-  min-width: 0;
-  height: 20px;
-  padding: 0 6px;
-  font-size: var(--font-size-xs);
-  line-height: 18px;
+.roi-row-action-btn.mini-btn {
+  width: var(--inline-action-size);
+  min-width: var(--inline-action-size);
+  height: var(--inline-action-size);
+  padding: 0;
+  font-size: 0;
+  line-height: 0;
 }
 
 .roi-row-action-btn:disabled {
@@ -113,9 +116,9 @@
 .roi-row-clear,
 .roi-row-delete {
   position: relative;
-  flex: 0 0 20px;
-  width: 20px;
-  min-width: 20px;
+  flex: 0 0 var(--inline-action-size);
+  width: var(--inline-action-size);
+  min-width: var(--inline-action-size);
   padding: 0;
   font-size: 0;
   line-height: 0;
@@ -218,11 +221,11 @@
   position: absolute;
   z-index: 80;
   left: 0;
-  bottom: calc(100% + var(--space-2));
+  bottom: calc(100% + var(--ui-spacing));
   display: grid;
   grid-template-columns: repeat(6, 14px);
-  gap: 6px;
-  padding: var(--space-2) var(--space-3);
+  gap: var(--ui-spacing);
+  padding: var(--ui-spacing);
   border: 1px solid rgba(255, 245, 228, 0.18);
   border-radius: var(--radius);
   background: rgba(34, 32, 29, 0.96);

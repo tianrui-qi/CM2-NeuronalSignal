@@ -37,8 +37,8 @@
 }
 
 .roi-box-editor-icon {
-  width: 28px;
-  height: 28px;
+  width: var(--modal-icon-size);
+  height: var(--modal-icon-size);
   padding: 0;
   border: 1px solid var(--border-control);
   border-radius: var(--radius);
@@ -66,7 +66,7 @@
 .roi-box-field input {
   width: 100%;
   min-width: 0;
-  height: 34px;
+  height: var(--control-height);
   padding: 6px 8px;
   border: 1px solid var(--border-control);
   border-radius: var(--radius);
