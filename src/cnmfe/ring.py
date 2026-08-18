@@ -13,7 +13,6 @@ from skimage.morphology import disk
 from caiman.utils.stats import pd_solve
 
 
-DEFAULT_PIXEL_BATCH_SIZE = 512
 DEFAULT_B0_BLOCK_MIB = 128
 DEFAULT_HDF5_PIXEL_BATCH_SIZE = 64
 DEFAULT_HDF5_CHUNK_NNZ = 1_000_000
@@ -252,30 +251,6 @@ def _solve_ring_weights_cpu(neighbor_residual: np.ndarray, target: np.ndarray) -
         return data
 
 
-def _store_group(
-    *,
-    pixels: np.ndarray,
-    neighbors: np.ndarray,
-    weights: np.ndarray,
-    indptr: np.ndarray,
-    indices_out: np.ndarray,
-    data_out: np.ndarray,
-) -> None:
-    starts = indptr[pixels]
-    count = neighbors.shape[1]
-    if len(pixels) and np.all(np.diff(starts) == count):
-        start = int(starts[0])
-        stop = start + int(len(pixels) * count)
-        indices_out[start:stop] = neighbors.reshape(-1)
-        data_out[start:stop] = weights.reshape(-1)
-        return
-
-    for row, start in enumerate(starts):
-        stop = int(start) + count
-        indices_out[int(start):stop] = neighbors[row]
-        data_out[int(start):stop] = weights[row]
-
-
 def _store_group_as_csc(
     *,
     pixels: np.ndarray,
@@ -461,98 +436,6 @@ def write_ring_model_hdf5(
         if path.exists():
             path.unlink()
     return nnz, b0.shape
-
-
-def compute_ring_model_streaming(
-    yr: COrderMmapRowReader | np.memmap | np.ndarray,
-    a_mat: scipy.sparse.spmatrix | np.ndarray,
-    c_mat: np.ndarray,
-    dims: tuple[int, int],
-    radius: float,
-    *,
-    ssub: int = 1,
-    tsub: int = 1,
-    pixel_batch_size: int = DEFAULT_PIXEL_BATCH_SIZE,
-    b0_block_mib: int = DEFAULT_B0_BLOCK_MIB,
-) -> tuple[scipy.sparse.csr_matrix, np.ndarray]:
-    """Compute CaImAn's ring-model ``W, b0`` with bounded memory.
-
-    This implements the same objective as ``caiman...initialization.compute_W``
-    for the full-resolution case used by this project (``ssub=1, tsub=1``),
-    but streams pixel batches into a CSR matrix instead of building a full
-    residual movie or a Python object for every pixel.
-    """
-
-    if int(ssub) != 1 or int(tsub) != 1:
-        raise NotImplementedError("Streaming ring W currently supports ssub=1 and tsub=1.")
-
-    d1, d2 = int(dims[0]), int(dims[1])
-    n_pixels = d1 * d2
-    if int(yr.shape[0]) != n_pixels:
-        raise ValueError(f"Movie rows {yr.shape[0]} do not match dims {dims}.")
-
-    a_csr = _as_csr_float32(a_mat)
-    c = np.asarray(c_mat, dtype=np.float32)
-    if a_csr.shape != (n_pixels, c.shape[0]):
-        raise ValueError(f"A/C/dims mismatch: A={a_csr.shape}, C={c.shape}, dims={dims}.")
-
-    pixel_batch_size = max(1, int(pixel_batch_size))
-    ring_dx, ring_dy = _ring_offsets(radius=radius, ssub=ssub)
-    b0 = compute_b0_streaming(yr, a_csr, c, block_mib=b0_block_mib)
-    indptr = _build_indptr(
-        d1=d1,
-        d2=d2,
-        ring_dx=ring_dx,
-        ring_dy=ring_dy,
-        pixel_batch_size=max(pixel_batch_size * 8, 8192),
-    )
-    nnz = int(indptr[-1])
-    index_dtype = np.int32 if nnz <= np.iinfo(np.int32).max else np.int64
-    indices = np.empty(nnz, dtype=index_dtype)
-    data = np.empty(nnz, dtype=np.float32)
-
-    with tqdm.tqdm(
-        total=n_pixels,
-        desc="ring(W)",
-        unit="px",
-        dynamic_ncols=True,
-    ) as bar:
-        for start in range(0, n_pixels, pixel_batch_size):
-            stop = min(start + pixel_batch_size, n_pixels)
-            pixels = np.arange(start, stop, dtype=np.int64)
-            candidates, inside, counts = _neighbor_candidates(
-                pixels,
-                d1=d1,
-                d2=d2,
-                ring_dx=ring_dx,
-                ring_dy=ring_dy,
-            )
-            for count in np.unique(counts):
-                count = int(count)
-                if count == 0:
-                    continue
-                group_rows = np.flatnonzero(counts == count)
-                group_pixels = pixels[group_rows]
-                group_neighbors = candidates[group_rows][inside[group_rows]].reshape((-1, count))
-                group_weights = _solve_ring_batch(
-                    group_pixels,
-                    group_neighbors,
-                    yr=yr,
-                    a_csr=a_csr,
-                    c_mat=c,
-                    b0=b0,
-                )
-                _store_group(
-                    pixels=group_pixels,
-                    neighbors=group_neighbors,
-                    weights=group_weights,
-                    indptr=indptr,
-                    indices_out=indices,
-                    data_out=data,
-                )
-            bar.update(stop - start)
-
-    return scipy.sparse.csr_matrix((data, indices, indptr), shape=(n_pixels, n_pixels)), b0
 
 
 def ring_radius_from_init(init_params: dict[str, Any]) -> float:

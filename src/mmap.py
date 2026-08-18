@@ -55,19 +55,6 @@ def parse_encoded_mmap_name(path: str | Path) -> tuple[tuple[int, ...], int, str
     order = match.group("order")
     dims = (d1, d2) if d3 == 1 else (d1, d2, d3)
     return dims, frames, order
-
-
-def resolve_mmap_path(stem: str | Path) -> Path:
-    stem_path = Path(stem).expanduser()
-    parent = stem_path.parent if str(stem_path.parent) else Path(".")
-    matches = sorted(parent.glob(f"{stem_path.name}_d1_*_d2_*_d3_*_order_*_frames_*.mmap"))
-    if len(matches) != 1:
-        raise FileNotFoundError(
-            f"Expected exactly one encoded mmap for stem {stem_path}, found {len(matches)}."
-        )
-    return matches[0]
-
-
 def _columns_per_write_block(h: int, w: int, t: int, write_block_mib: int) -> int:
     bytes_per_column = int(h) * int(t) * np.dtype(np.float32).itemsize
     target_bytes = max(1, int(write_block_mib)) * 1024 * 1024

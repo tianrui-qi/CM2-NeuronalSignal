@@ -10,7 +10,7 @@ script/       User-facing command entry points.
 src/mmap.py   Raw TIFF -> CaImAn encoded mmap.
 src/cnmfe/    CNMF-E fitting and analysis-friendly hdf5 helpers.
 src/cache/    Viewer cache builder; writes data/cache/<model_id>/.
-src/serve.py  Flask server for web/ and a selected cache folder.
+src/serve/    Flask server for web/ and a selected cache folder.
 web/          Browser frontend.
 data/raw/     Raw input boundary.
 data/mmap/    CaImAn encoded mmap files.
@@ -32,5 +32,8 @@ python -m script.serve
 ```
 
 `script/serve.py` only serves existing cache files. Rebuild cache explicitly with `script/cache.py`.
+Cache building, validation, serving, and the browser share one strict,
+unversioned scientific contract.
 
-For viewer internals, cache contracts, and smoke checks, see `web/ARCHITECTURE.md`.
+For repository-wide instructions, see `AGENTS.md`. For viewer internals and
+manual browser checks, continue with `web/AGENTS.md`.

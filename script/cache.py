@@ -1,7 +1,7 @@
 import hydra
 import omegaconf
 
-from src.cache.builder import build_cache
+from src.cache import build_cache
 
 
 @hydra.main(version_base=None, config_path="../config", config_name="cache")

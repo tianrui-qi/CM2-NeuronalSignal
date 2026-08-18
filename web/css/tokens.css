@@ -6,17 +6,14 @@
   --text: #f7f1e7;
   --text-muted: rgba(247, 241, 231, 0.68);
   --text-subtle: rgba(247, 241, 231, 0.5);
-  --text-faint: rgba(247, 241, 231, 0.38);
 
-  --surface-glass: rgba(25, 23, 20, 0.66);
-  --surface-menu: rgba(18, 16, 14, 0.96);
-  --surface-panel: rgba(255, 248, 239, 0.07);
-  --surface-control: rgba(255, 248, 239, 0.08);
-  --surface-control-hover: rgba(255, 248, 239, 0.14);
-  --surface-active: rgba(255, 248, 239, 0.2);
-  --surface-row: rgba(255, 248, 239, 0.06);
-  --surface-row-hover: rgba(255, 248, 239, 0.1);
-  --surface-row-emphasis: rgba(255, 248, 239, 0.085);
+  /* Base surfaces express hierarchy; state layers express pointer interaction. */
+  --surface-background: rgba(25, 23, 20, 0.66);
+  --surface-interactive: rgba(255, 248, 239, 0.06);
+  --surface-selected: rgba(255, 248, 239, 0.16);
+  --elevation-overlay: rgba(48, 45, 41, 0.88);
+  --state-hover-layer: rgba(255, 248, 239, 0.08);
+  --state-pressed-layer: rgba(255, 248, 239, 0.12);
 
   --border: rgba(255, 245, 228, 0.16);
   --border-soft: rgba(255, 245, 228, 0.12);
@@ -24,14 +21,10 @@
   --border-hover: rgba(255, 245, 228, 0.24);
   --border-strong: rgba(255, 245, 228, 0.34);
 
-  --accent: #23645d;
   --accent-mint: rgba(122, 210, 190, 0.58);
-  --accent-mint-soft: rgba(122, 210, 190, 0.32);
-  --accent-warm: rgba(250, 189, 94, 0.4);
 
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 12px;
   --radius-pill: 999px;
   --radius: var(--radius-md);
 
@@ -52,14 +45,23 @@
   --font-size-lg: 15px;
 
   --control-height: 30px;
+  --plot-action-column-width: 106px;
   --section-header-height: 30px;
   --table-header-height: 20px;
   --inline-action-size: 20px;
   --modal-icon-size: 30px;
   --slider-hit-height: 18px;
-
-  --trace-strip-width: 5px;
-  --trace-strip-gap: 2px;
+  --slider-thumb-size: 14px;
+  --slider-track-height: 4px;
+  --slider-track-rest: rgba(255, 255, 255, 0.22);
+  --slider-track-fill: rgba(247, 241, 231, 0.72);
+  --slider-thumb-fill: #181613;
+  --slider-thumb-border-width: 2px;
+  --slider-thumb-border-color: rgba(247, 241, 231, 0.94);
+  --slider-thumb-shadow: 0 0 0 2px rgba(0, 0, 0, 0.28);
+  --slider-hover-ring: rgba(247, 241, 231, 0.18);
+  --slider-active-ring: var(--state-pressed-layer);
+  --slider-focus-ring: var(--accent-mint);
 
   --shadow-panel: 0 18px 50px rgba(5, 4, 3, 0.34);
   --shadow-control: 0 0 0 1px rgba(0, 0, 0, 0.22);

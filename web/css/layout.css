@@ -26,7 +26,7 @@
   padding: var(--ui-spacing);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: rgba(10, 9, 8, 0.7);
+  background: var(--elevation-overlay);
   color: #f8f4ea;
   font-size: var(--font-size-md);
   box-shadow: var(--shadow-panel);
@@ -43,7 +43,7 @@
 .overlay-stack {
   position: absolute;
   top: 0;
-  left: var(--space-7);
+  left: var(--ui-spacing);
   bottom: 0;
   width: var(--overlay-width);
   display: flex;
@@ -73,8 +73,31 @@
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(18px) saturate(135%);
   padding: var(--ui-spacing);
-  background: var(--surface-glass);
+  background: var(--surface-background);
   pointer-events: auto;
+}
+
+.floating-surface {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--elevation-overlay);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(18px) saturate(135%);
+}
+
+.anchored-popover {
+  position: absolute;
+  top: calc(100% + var(--ui-spacing));
+  bottom: auto;
+  z-index: var(--z-menu);
+  box-sizing: border-box;
+  max-height: var(--anchored-popover-available-height, 300px);
+  overflow-y: auto;
+}
+
+.anchored-popover[data-placement="up"] {
+  top: auto;
+  bottom: calc(100% + var(--ui-spacing));
 }
 
 .workflow-panel {
@@ -93,7 +116,7 @@
   flex-direction: column;
   gap: var(--ui-spacing);
   width: 100%;
-  margin-block: var(--space-7);
+  margin-block: var(--ui-spacing);
   pointer-events: auto;
 }
 
@@ -125,7 +148,7 @@
 
 .workflow-section-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 8px;
+  grid-template-columns: minmax(0, 1fr) 8px;
   align-items: center;
   gap: var(--ui-spacing);
   width: 100%;
@@ -134,7 +157,7 @@
   padding: 0 var(--ui-spacing);
   border: 0;
   border-radius: var(--radius) var(--radius) 0 0;
-  background: var(--surface-panel);
+  background: var(--surface-interactive);
   color: var(--text);
   cursor: pointer;
   font: inherit;
@@ -153,24 +176,24 @@
   transform: rotate(0deg);
 }
 
+.workflow-section-header:hover {
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    var(--surface-interactive);
+}
+
+.workflow-section-header:active {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    var(--surface-interactive);
+}
+
 .workflow-section.collapsed .workflow-section-header {
   border-radius: var(--radius);
 }
 
 .workflow-section.collapsed .workflow-section-header::after {
   transform: rotate(-90deg);
-}
-
-.workflow-section-summary {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-subtle);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .workflow-section-body {
@@ -206,7 +229,7 @@
   border: 0;
   border-right: 1px solid rgba(255, 245, 228, 0.14);
   border-radius: 0;
-  background: var(--surface-control);
+  background: var(--surface-interactive);
   color: var(--text-muted);
   cursor: pointer;
   font: inherit;
@@ -221,13 +244,33 @@
 }
 
 .background-option:hover {
-  background: var(--surface-control-hover);
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    var(--surface-interactive);
   color: var(--text);
 }
 
+.background-option:active {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    var(--surface-interactive);
+}
+
 .background-option.is-active {
-  background: var(--surface-active);
+  background: var(--surface-selected);
   color: var(--text);
+}
+
+.background-option.is-active:hover {
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    var(--surface-selected);
+}
+
+.background-option.is-active:active {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    var(--surface-selected);
 }
 
 .source-panel {

@@ -14,7 +14,7 @@
   padding: var(--space-6);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: rgba(18, 16, 14, 0.92);
+  background: var(--elevation-overlay);
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(18px) saturate(135%);
 }
@@ -42,11 +42,23 @@
   padding: 0;
   border: 1px solid var(--border-control);
   border-radius: var(--radius);
-  background: var(--surface-control);
+  background: var(--surface-interactive);
   color: var(--text);
   cursor: pointer;
   font-size: 16px;
   line-height: 1;
+}
+
+.roi-box-editor-icon:hover {
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    var(--surface-interactive);
+}
+
+.roi-box-editor-icon:active {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    var(--surface-interactive);
 }
 
 .roi-box-grid {
@@ -70,7 +82,7 @@
   padding: 6px 8px;
   border: 1px solid var(--border-control);
   border-radius: var(--radius);
-  background: var(--surface-control);
+  background: var(--surface-interactive);
   color: var(--text);
   font: inherit;
 }
@@ -78,4 +90,61 @@
 .roi-box-actions {
   justify-content: flex-end;
   margin-top: var(--space-5);
+}
+
+.roi-confirm-dialog {
+  width: min(360px, calc(100vw - 36px));
+  max-width: none;
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--elevation-overlay);
+  color: var(--text);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(18px) saturate(135%);
+}
+
+.roi-confirm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(2px);
+}
+
+.roi-confirm-dialog-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.roi-confirm-dialog-description {
+  margin: var(--space-4) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.roi-confirm-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ui-spacing);
+  margin-top: var(--space-6);
+}
+
+.roi-confirm-dialog-confirm {
+  border-color: rgba(242, 126, 112, 0.5);
+  background: rgba(154, 55, 45, 0.7);
+}
+
+.roi-confirm-dialog-confirm:hover,
+.roi-confirm-dialog-confirm:focus-visible,
+.roi-confirm-dialog-confirm:active {
+  border-color: rgba(255, 164, 151, 0.72);
+  background: rgba(178, 64, 52, 0.86);
+}
+
+.roi-confirm-dialog-cancel:hover,
+.roi-confirm-dialog-cancel:focus-visible,
+.roi-box-editor-icon:focus-visible,
+.roi-box-actions .mini-btn:focus-visible {
+  outline: 2px solid rgba(122, 210, 190, 0.72);
+  outline-offset: 2px;
 }

@@ -1,0 +1,73 @@
+.map-neuron-preview {
+  position: fixed;
+  z-index: calc(var(--z-overlay) - 1);
+  width: min(320px, calc(100vw - 16px));
+  padding: var(--ui-spacing);
+  pointer-events: none;
+  color: var(--text);
+}
+
+.map-neuron-preview.hidden {
+  display: none;
+}
+
+.map-neuron-preview.is-rendering {
+  visibility: hidden;
+}
+
+.map-neuron-preview-header {
+  display: block;
+  min-height: var(--table-header-height);
+  margin-bottom: var(--space-1);
+}
+
+.map-neuron-preview-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-neuron-preview-plot {
+  width: 100%;
+  min-height: 1px;
+  overflow: hidden;
+  border-block: 1px solid var(--border-soft);
+}
+
+.map-neuron-preview-metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ui-spacing);
+  margin: var(--ui-spacing) 0 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+.map-neuron-preview-metric-column {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.map-neuron-preview-metadata dt,
+.map-neuron-preview-metadata dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.map-neuron-preview-metadata dt {
+  color: var(--text-muted);
+}
+
+.map-neuron-preview-metadata dd {
+  overflow: hidden;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

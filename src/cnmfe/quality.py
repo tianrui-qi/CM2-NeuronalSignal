@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import csv
-import json
 import math
 from pathlib import Path
 from typing import Any
@@ -16,7 +14,7 @@ from .cnmf import component_count, frame_rate_hz
 from ..mmap import load_memmap_movie
 
 
-PROFILE_METRIC_KEYS = (
+METRIC_KEYS = (
     "snr",
     "r_value",
     "bl",
@@ -300,7 +298,7 @@ def ensure_component_quality_metrics(cnm: Any, mmap_load_path: str | Path) -> bo
     return True
 
 
-def profile_rows_from_model(
+def metric_rows_from_model(
     *,
     cnm: Any,
 ) -> tuple[list[dict[str, str]], tuple[str, ...]]:
@@ -319,7 +317,7 @@ def profile_rows_from_model(
         "t_peak": t_peak,
         "t_half": t_half,
     }
-    metric_keys = tuple(key for key in PROFILE_METRIC_KEYS if metric_values[key] is not None)
+    metric_keys = tuple(key for key in METRIC_KEYS if metric_values[key] is not None)
 
     rows: list[dict[str, str]] = []
     for idx in range(n_components):
@@ -330,78 +328,3 @@ def profile_rows_from_model(
             }
         )
     return rows, metric_keys
-
-
-def read_profile(profile_path: str | Path, n_components: int) -> tuple[list[dict[str, str]], tuple[str, ...]]:
-    rows_by_index: dict[int, dict[str, str]] = {}
-    with Path(profile_path).open("r", newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        if reader.fieldnames is None:
-            raise ValueError(f"Profile CSV has no header: {profile_path}")
-        fieldnames = tuple(reader.fieldnames)
-        if "component_index" not in fieldnames:
-            raise ValueError(f"Profile CSV is missing component_index: {profile_path}")
-        for row in reader:
-            rows_by_index[int(row["component_index"])] = row
-
-    missing = [idx for idx in range(n_components) if idx not in rows_by_index]
-    if missing:
-        raise ValueError(f"Profile/model mismatch: missing {len(missing)} rows; first={missing[:5]}")
-    metric_keys = tuple(key for key in PROFILE_METRIC_KEYS if key in fieldnames)
-    return [rows_by_index[idx] for idx in range(n_components)], metric_keys
-
-
-def write_profile_csv(profile_path: str | Path, rows: list[dict[str, str]], metric_keys: tuple[str, ...]) -> None:
-    path = Path(profile_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=("component_index", *metric_keys))
-        writer.writeheader()
-        for idx, row in enumerate(rows):
-            writer.writerow({"component_index": idx, **{key: row.get(key, "nan") for key in metric_keys}})
-
-
-def metric_to_space(raw_value: float, scale: str) -> float:
-    value = float(raw_value)
-    if scale == "linear":
-        return value
-    if scale == "log":
-        return float(np.log10(value)) if np.isfinite(value) and value > 0 else float("-inf")
-    raise ValueError(f"Unsupported metric scale: {scale}")
-
-
-def profile_stats(rows: list[dict[str, str]], metric_keys: tuple[str, ...]) -> dict[str, dict[str, float | str]]:
-    scales = {
-        "snr": "log",
-        "r_value": "linear",
-        "bl": "linear",
-        "lam": "log",
-        "neurons_sn": "log",
-        "g_0": "linear",
-        "g_1": "linear",
-        "t_peak": "linear",
-        "t_half": "linear",
-    }
-    payload: dict[str, dict[str, float | str]] = {}
-    for key in metric_keys:
-        scale = scales.get(key, "linear")
-        values = np.asarray([json_float_or_none(row.get(key)) for row in rows], dtype=np.float64)
-        finite = values[np.isfinite(values)]
-        if finite.size == 0:
-            mean, std = 0.0, 1.0
-        elif scale == "log":
-            positive = finite[finite > 0]
-            fit_values = np.log10(positive) if positive.size else np.asarray([0.0])
-            mean, std = scipy_norm.fit(fit_values.astype(np.float64, copy=False))
-        else:
-            mean, std = scipy_norm.fit(finite.astype(np.float64, copy=False))
-        if not np.isfinite(std) or std <= 0:
-            std = 1.0
-        payload[key] = {"scale": scale, "mean": float(mean), "std": float(std)}
-    return payload
-
-
-def write_profile_json(profile_json_path: str | Path, rows: list[dict[str, str]], metric_keys: tuple[str, ...]) -> None:
-    path = Path(profile_json_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(profile_stats(rows, metric_keys), indent=2), encoding="utf-8")

@@ -123,6 +123,12 @@ def write_ybg_projection_trace_cache(
     cnm: Any,
     mmap_load_path: str | Path,
     cache_save_fold: str | Path,
-) -> dict[str, dict[str, np.ndarray]]:
+    expected_shape: tuple[int, int],
+) -> None:
     background_projection = _background_projection(cnm, mmap_load_path)
-    return write_trace_cache(cache_save_fold, YBG_PROJECTION_SOURCE_KEY, background_projection)
+    write_trace_cache(
+        cache_save_fold,
+        YBG_PROJECTION_SOURCE_KEY,
+        background_projection,
+        expected_shape=expected_shape,
+    )

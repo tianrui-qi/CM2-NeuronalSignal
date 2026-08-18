@@ -1,0 +1,23 @@
+.control-tooltip {
+  position: fixed;
+  z-index: var(--z-tooltip, 60);
+  width: max-content;
+  max-width: min(260px, calc(100vw - 16px));
+  padding: var(--space-2) var(--ui-spacing);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--elevation-overlay);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  text-align: left;
+}
+
+.control-tooltip[hidden] {
+  display: none;
+}

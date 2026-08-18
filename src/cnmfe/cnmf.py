@@ -83,11 +83,3 @@ def residual_traces(cnm: Any) -> np.ndarray:
     if yra.shape != c.shape:
         raise ValueError(f"YrA/C shape mismatch: YrA={yra.shape}, C={c.shape}")
     return yra
-
-
-def baseline_values(cnm: Any) -> np.ndarray | None:
-    bl = getattr(cnm.estimates, "bl", None)
-    if bl is None:
-        return None
-    values = np.asarray(bl, dtype=np.float32).reshape(-1)
-    return values if values.size == component_count(cnm) else None

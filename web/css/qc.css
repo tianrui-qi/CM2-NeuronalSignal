@@ -1,7 +1,6 @@
 .qc-card {
-  --qc-control-gap: var(--ui-spacing);
-  --qc-plot-left-inset: 0px;
-  --qc-plot-right-inset: 0px;
+  --qc-plot-left-inset: 22px;
+  --qc-plot-right-inset: 22px;
   display: flex;
   flex: 0 0 auto;
   min-height: 0;
@@ -14,22 +13,30 @@
 }
 
 .qc-controls {
-  display: grid;
-  gap: var(--ui-spacing);
   width: 100%;
 }
 
-.qc-control-row {
+.qc-toolbar-row,
+.plot-download-row.qc-download-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-  gap: var(--qc-control-gap);
+  grid-template-columns: minmax(0, 1fr) var(--plot-action-column-width);
   align-items: center;
+  gap: var(--ui-spacing);
   width: 100%;
   min-height: var(--control-height);
 }
 
-.qc-control-row.hidden {
-  display: none;
+.qc-toolbar-row {
+  grid-template-columns: var(--plot-action-column-width) minmax(0, 1fr);
+  grid-template-areas: "picker threshold";
+}
+
+.qc-toolbar-row > .qc-threshold-range {
+  grid-area: threshold;
+}
+
+.qc-toolbar-row > .blueprint-picker {
+  grid-area: picker;
 }
 
 .blueprint-picker {
@@ -46,7 +53,7 @@
   padding: 0 28px 0 10px;
   border: 1px solid var(--border-control);
   border-radius: var(--radius);
-  background: var(--surface-control);
+  background: var(--surface-interactive);
   color: var(--text);
   font: inherit;
   font-size: var(--font-size-sm);
@@ -66,6 +73,18 @@
   transform: translateY(-40%);
 }
 
+.blueprint-select:hover {
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    var(--surface-interactive);
+}
+
+.blueprint-select:active {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    var(--surface-interactive);
+}
+
 .blueprint-select-label,
 .blueprint-option-label {
   min-width: 0;
@@ -76,19 +95,16 @@
 }
 
 .blueprint-menu {
-  position: absolute;
+  right: auto;
   left: 0;
-  top: calc(100% + 5px);
-  z-index: var(--z-menu);
-  width: max(176px, 100%);
-  max-height: min(300px, calc(100vh - 160px));
-  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: max(160px, 100%);
+  max-width: min(240px, calc(100vw - 40px));
+  gap: 0;
   padding: 4px;
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius);
-  background: var(--surface-menu);
-  box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(18px) saturate(135%);
 }
 
 .blueprint-menu.hidden {
@@ -98,10 +114,12 @@
 .blueprint-option {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-spacing);
   width: 100%;
   min-height: var(--control-height);
   padding: 0 8px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
@@ -111,9 +129,56 @@
 }
 
 .blueprint-option:hover,
-.blueprint-option.is-active {
-  background: var(--surface-control-hover);
+.blueprint-option:focus-visible {
+  background: var(--state-hover-layer);
+  outline: none;
 }
+
+.blueprint-option:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-mint);
+}
+
+.blueprint-option:active {
+  background: var(--state-pressed-layer);
+}
+
+.blueprint-option.is-active {
+  background: var(--surface-selected);
+}
+
+.blueprint-option.is-active:hover,
+.blueprint-option.is-active:focus-visible {
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    var(--surface-selected);
+}
+
+.blueprint-option.is-active:active {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    var(--surface-selected);
+}
+
+.blueprint-option-threshold {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.blueprint-option-threshold:empty {
+  display: none;
+}
+
+.qc-histogram-stage {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+}
+
 .blueprint-stats-plot {
   width: 100%;
   height: 130px;
@@ -126,8 +191,76 @@
   display: none;
 }
 
+.qc-histogram-range-preview {
+  position: absolute;
+  z-index: 4;
+  top: 4px;
+  right: var(--qc-plot-right-inset);
+  bottom: 30px;
+  left: var(--qc-plot-left-inset);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.qc-histogram-range-preview.hidden {
+  display: none;
+}
+
+.qc-histogram-range-shade,
+.qc-histogram-range-bound {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.qc-histogram-range-shade {
+  background: rgba(18, 16, 14, 0.18);
+}
+
+.qc-histogram-range-preview[data-kind="threshold"] .qc-histogram-range-shade {
+  background: rgba(18, 16, 14, 0.28);
+}
+
+.qc-histogram-range-shade-lower {
+  left: 0;
+  width: var(--qc-preview-lower, 0%);
+}
+
+.qc-histogram-range-shade-upper {
+  right: 0;
+  width: calc(100% - var(--qc-preview-upper, 100%));
+}
+
+.qc-histogram-range-bound {
+  display: none;
+  width: 1px;
+  background: rgba(247, 241, 231, 0.78);
+  transform: translateX(-0.5px);
+}
+
+.qc-histogram-range-preview.has-lower .qc-histogram-range-bound-lower {
+  display: block;
+  left: var(--qc-preview-lower, 0%);
+}
+
+.qc-histogram-range-preview.has-upper .qc-histogram-range-bound-upper {
+  display: block;
+  left: var(--qc-preview-upper, 100%);
+}
+
 .plot-download-row.qc-download-row {
+  grid-template-areas: "color actions";
+  justify-content: stretch;
   margin-top: 0;
+}
+
+.qc-download-row > .qc-inline-range {
+  grid-area: color;
+}
+
+.qc-download-row > .plot-download-actions {
+  grid-area: actions;
+  margin-left: 0;
 }
 
 .qc-download-row.hidden {
@@ -141,55 +274,11 @@
   height: var(--control-height);
   min-width: 0;
   box-sizing: border-box;
-  padding: 0 var(--qc-plot-right-inset) 0 var(--qc-plot-left-inset);
+  padding: 0;
 }
 
 .qc-inline-range.hidden {
   display: none;
-}
-
-.qc-unit-toggle {
-  display: inline-flex;
-  width: 100%;
-  height: var(--control-height);
-  min-width: 0;
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--surface-control);
-}
-
-.qc-unit-btn {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 100%;
-  padding: 0 10px;
-  border: 0;
-  border-right: 1px solid rgba(255, 245, 228, 0.14);
-  border-radius: 0;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--font-size-sm);
-}
-
-.qc-unit-btn:last-child {
-  border-right: 0;
-}
-
-.qc-unit-btn:hover:not(:disabled) {
-  background: var(--surface-control-hover);
-}
-
-.qc-unit-btn.active {
-  background: var(--surface-active, rgba(255, 248, 239, 0.2));
-}
-
-.qc-unit-btn:disabled {
-  color: var(--text-subtle);
-  cursor: default;
-  opacity: 0.56;
 }
 
 .qc-range-values {
@@ -226,17 +315,17 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: 7px;
-  height: 4px;
+  top: calc((var(--slider-hit-height) - var(--slider-track-height)) / 2);
+  height: var(--slider-track-height);
   border-radius: var(--radius-pill);
 }
 
 .qc-range-track {
-  background: var(--border);
+  background: var(--slider-track-rest);
 }
 
 .qc-range-fill {
-  background: rgba(247, 241, 231, 0.72);
+  background: var(--slider-track-fill);
 }
 
 .qc-color-fill {
@@ -244,6 +333,7 @@
 }
 
 .qc-range-input {
+  --slider-state-ring: transparent;
   position: absolute;
   left: 0;
   top: 0;
@@ -262,24 +352,20 @@
 }
 
 .qc-range-input::-webkit-slider-thumb {
-  width: 14px;
-  height: 14px;
-  margin-top: 2px;
-  border: 2px solid var(--text);
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  margin-top: calc((var(--slider-hit-height) - var(--slider-thumb-size)) / 2);
+  border: var(--slider-thumb-border-width) solid var(--slider-thumb-border-color);
   border-radius: var(--radius-pill);
   -webkit-appearance: none;
   appearance: none;
-  background: #181613;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.26);
+  background: var(--slider-thumb-fill);
+  box-shadow: var(--slider-thumb-shadow), 0 0 0 3px var(--slider-state-ring);
   cursor: ew-resize;
   pointer-events: auto;
 }
 
-.qc-range-input.is-unbounded::-webkit-slider-thumb {
-  background: transparent;
-}
-
-.qc-range-input-upper::-webkit-slider-thumb {
+.qc-threshold-range .qc-range-input-upper::-webkit-slider-thumb {
   background: transparent;
 }
 
@@ -289,22 +375,44 @@
 }
 
 .qc-range-input::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--text);
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  border: var(--slider-thumb-border-width) solid var(--slider-thumb-border-color);
   border-radius: var(--radius-pill);
-  background: #181613;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.26);
+  background: var(--slider-thumb-fill);
+  box-shadow: var(--slider-thumb-shadow), 0 0 0 3px var(--slider-state-ring);
   cursor: ew-resize;
   pointer-events: auto;
 }
 
-.qc-range-input.is-unbounded::-moz-range-thumb {
+.qc-threshold-range .qc-range-input-upper::-moz-range-thumb {
   background: transparent;
 }
 
-.qc-range-input-upper::-moz-range-thumb {
-  background: transparent;
+.qc-range-input:hover {
+  --slider-state-ring: var(--slider-hover-ring);
+}
+
+.qc-range-input:active {
+  --slider-state-ring: var(--slider-active-ring);
+}
+
+.qc-range-input:focus-visible {
+  --slider-state-ring: var(--slider-focus-ring);
+  outline: none;
+}
+
+.qc-range-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.qc-range-input:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+}
+
+.qc-range-input:disabled::-moz-range-thumb {
+  cursor: not-allowed;
 }
 
 .qc-range-input-lower {
@@ -313,4 +421,9 @@
 
 .qc-range-input-upper {
   z-index: 3;
+}
+
+.qc-range-input:focus,
+.qc-range-input:active {
+  z-index: 4;
 }

@@ -1,104 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 from scipy import fft as scipy_fft
-import tifffile
 from tqdm import tqdm
 
 from ..mmap import load_memmap_movie
 
 
-BACKGROUND_CHUNK_FRAMES = 2
 BACKGROUND_MMAP_BLOCK_MIB = 64
 IMAGEJ_BANDPASS_FILTER_LARGE_DIAMETER_PX = 5.0
 IMAGEJ_BANDPASS_FILTER_SMALL_DIAMETER_PX = 1.0
-
-
-class TiffPageMovie:
-    def __init__(
-        self,
-        path: str | Path,
-        *,
-        height: int,
-        width: int,
-        trace_length: int | None = None,
-    ) -> None:
-        self.path = Path(path)
-        self._tif = tifffile.TiffFile(self.path)
-        series = self._tif.series[0]
-        shape = tuple(int(axis) for axis in series.shape)
-        if len(shape) != 3:
-            self.close()
-            raise ValueError(f"Expected a 3D movie, got shape {shape}: {self.path}")
-        if shape[1:] != (height, width):
-            self.close()
-            raise ValueError(f"Movie shape {shape} does not match model dims {(height, width)}: {self.path}")
-        if trace_length is not None and shape[0] != trace_length:
-            self.close()
-            raise ValueError(f"Movie length {shape[0]} does not match model trace length {trace_length}: {self.path}")
-        if len(self._tif.pages) < shape[0]:
-            self.close()
-            raise ValueError(f"TIFF page count is smaller than movie length: {self.path}")
-        self.shape = shape
-        self.dtype = np.dtype(series.dtype)
-
-    def close(self) -> None:
-        self._tif.close()
-
-    def __getitem__(self, item: Any) -> np.ndarray:
-        if isinstance(item, slice):
-            start, stop, step = item.indices(self.shape[0])
-            frames = [self._tif.pages[idx].asarray() for idx in range(start, stop, step)]
-            if not frames:
-                return np.empty((0, self.shape[1], self.shape[2]), dtype=self.dtype)
-            return np.stack(frames, axis=0)
-        if isinstance(item, int):
-            if item < 0:
-                item += self.shape[0]
-            return self._tif.pages[item].asarray()
-        raise TypeError(f"Unsupported TIFF movie index: {type(item).__name__}")
-
-
-def movie_tyx_from_tif(
-    y_load_path: str | Path,
-    *,
-    height: int,
-    width: int,
-    trace_length: int | None = None,
-) -> np.ndarray:
-    try:
-        movie = tifffile.memmap(y_load_path)
-    except ValueError:
-        return TiffPageMovie(y_load_path, height=height, width=width, trace_length=trace_length)
-    if movie.ndim == 2:
-        raise ValueError(f"Expected a time series movie, got 2D image: {y_load_path}")
-    if movie.ndim != 3:
-        raise ValueError(f"Expected a 3D movie, got shape {movie.shape}: {y_load_path}")
-    if movie.shape[1:] == (height, width) and (trace_length is None or movie.shape[0] == trace_length):
-        return movie
-    if movie.shape[:2] == (height, width) and (trace_length is None or movie.shape[2] == trace_length):
-        return np.moveaxis(movie, 2, 0)
-    raise ValueError(f"Movie shape {movie.shape} does not match model dims {(height, width)}: {y_load_path}")
-
-
-def movie_tyx_from_mmap(
-    mmap_load_path: str | Path,
-    *,
-    height: int,
-    width: int,
-    trace_length: int | None = None,
-) -> np.ndarray:
-    yr, dims, frames = load_memmap_movie(mmap_load_path)
-    if dims != (height, width):
-        raise ValueError(f"mmap dims {dims} do not match model dims {(height, width)}: {mmap_load_path}")
-    if trace_length is not None and frames != trace_length:
-        raise ValueError(
-            f"mmap length {frames} does not match model trace length {trace_length}: {mmap_load_path}"
-        )
-    return yr.T.reshape((frames, height, width), order="F")
 
 
 def mean_std_projection_from_mmap(
@@ -131,45 +44,6 @@ def mean_std_projection_from_mmap(
         mean_out.reshape((height, width), order="F"),
         std_out.reshape((height, width), order="F"),
     )
-
-
-def std_projection_from_mmap(
-    mmap_load_path: str | Path,
-    *,
-    height: int,
-    width: int,
-    trace_length: int,
-    block_mib: int = BACKGROUND_MMAP_BLOCK_MIB,
-) -> np.ndarray:
-    _, std_image = mean_std_projection_from_mmap(
-        mmap_load_path,
-        height=height,
-        width=width,
-        trace_length=trace_length,
-        block_mib=block_mib,
-    )
-    return std_image
-
-
-def std_projection(movie_tyx: np.ndarray) -> np.ndarray:
-    try:
-        n_frames = int(movie_tyx.shape[0])
-        height = int(movie_tyx.shape[1])
-        width = int(movie_tyx.shape[2])
-        total = np.zeros((height, width), dtype=np.float64)
-        total_sq = np.zeros((height, width), dtype=np.float64)
-        for start in tqdm(range(0, n_frames, BACKGROUND_CHUNK_FRAMES), desc="cache(background)", dynamic_ncols=True):
-            chunk = np.array(movie_tyx[start:start + BACKGROUND_CHUNK_FRAMES], dtype=np.float32, copy=True)
-            total += chunk.sum(axis=0, dtype=np.float64)
-            np.square(chunk, out=chunk)
-            total_sq += chunk.sum(axis=0, dtype=np.float64)
-        mean = total / max(n_frames, 1)
-        variance = np.maximum(total_sq / max(n_frames, 1) - mean * mean, 0.0)
-        return np.sqrt(variance).astype(np.float32)
-    finally:
-        close = getattr(movie_tyx, "close", None)
-        if close is not None:
-            close()
 
 
 def _next_power_of_two_at_least(value: float) -> int:

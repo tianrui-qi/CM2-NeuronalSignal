@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
+import math
 from pathlib import Path
 
 from ..cnmfe.cnmf import (
@@ -13,15 +13,40 @@ from ..cnmfe.cnmf import (
     spatial_matrix,
     trace_length,
 )
-from ..cnmfe.traces import TRACE_SOURCE_FILES, trace_sources
+from ..cnmfe.quality import ensure_component_quality_metrics, metric_rows_from_model
+from ..cnmfe.traces import trace_sources
 
 from .background_cache import write_background_cache
-from .dff_cache import DFF_MIN_BASELINE_ABS, YBG_PROJECTION_SOURCE_KEY, write_ybg_projection_trace_cache
-from .manifest import BACKGROUND_DIRNAME, CACHE_VERSION, METADATA_FILE_NAME, POINTS_FILE_NAME, source_signature
+from .contract import (
+    BACKGROUND_DIRNAME,
+    METADATA_FILE_NAME,
+    POINTS_FILE_NAME,
+    TRACE_SOURCE_FILES,
+)
+from .contract.spec import (
+    COORDINATE_INDEXING,
+    FRAME_INDEXING,
+    IMAGE_AXIS_ORDER,
+    IMAGE_ORIGIN,
+    IMAGE_X_DIRECTION,
+    IMAGE_Y_DIRECTION,
+    PIXEL_FLATTEN_ORDER,
+    QC_LOWER_BOUND,
+    QC_UPPER_BOUND,
+    REGION_BOUNDARY,
+    ROI_BOUNDS,
+    TIME_COORDINATE,
+    TRACE_DTYPE,
+    TRACE_LAYOUT,
+)
+from .dff_cache import (
+    DFF_MIN_BASELINE_ABS,
+    YBG_PROJECTION_SOURCE_KEY,
+    write_ybg_projection_trace_cache,
+)
 from .points import build_points_payload, write_points
-from .profile import build_profile
+from .publisher import publish_cache_directory
 from .trace_cache import write_trace_cache
-from .validators import validate_cache
 
 
 def build_cache(
@@ -32,7 +57,8 @@ def build_cache(
 ) -> Path:
     model_path = Path(cnmfe_load_path).expanduser().resolve()
     mmap_path = Path(mmap_load_path).expanduser().resolve()
-    cache_root = Path(cache_save_fold).expanduser().resolve()
+    cache_target = Path(cache_save_fold).expanduser()
+    cache_root = cache_target.resolve()
 
     if not model_path.is_file():
         raise FileNotFoundError(f"Missing CNMF-E model: {model_path}")
@@ -46,93 +72,111 @@ def build_cache(
     n_components = component_count(cnm)
     n_frames = trace_length(cnm)
     fr_hz = frame_rate_hz(cnm)
+    if not math.isfinite(fr_hz) or fr_hz <= 0:
+        raise ValueError(
+            f"Cannot build cache with non-positive or non-finite frame rate: {fr_hz}"
+        )
 
-    if cache_root.exists():
-        shutil.rmtree(cache_root)
-    cache_root.mkdir(parents=True)
-    (cache_root / BACKGROUND_DIRNAME).mkdir(parents=True)
+    def build_staged_cache(staging_root: Path) -> None:
+        (staging_root / BACKGROUND_DIRNAME).mkdir(parents=True)
 
-    rows, metric_keys, _ = build_profile(
-        cnm=cnm,
-        cache_save_fold=cache_root,
-        mmap_load_path=mmap_path,
-    )
+        ensure_component_quality_metrics(cnm, mmap_path)
+        rows, metric_keys = metric_rows_from_model(cnm=cnm)
 
-    trace_stats_by_source = {}
-    for source_key, traces in trace_sources(cnm).items():
-        trace_stats_by_source.update(write_trace_cache(cache_root, source_key, traces))
-    trace_stats_by_source.update(
+        for source_key, traces in trace_sources(cnm).items():
+            write_trace_cache(
+                staging_root,
+                source_key,
+                traces,
+                expected_shape=(n_components, n_frames),
+            )
         write_ybg_projection_trace_cache(
             cnm=cnm,
             mmap_load_path=mmap_path,
-            cache_save_fold=cache_root,
+            cache_save_fold=staging_root,
+            expected_shape=(n_components, n_frames),
         )
-    )
 
-    points_payload = build_points_payload(
-        a_csc=spatial_matrix(cnm),
-        height=height,
-        n_components=n_components,
-        rows=rows,
-        metric_keys=metric_keys,
-        trace_stats_by_source=trace_stats_by_source,
-    )
-    write_points(cache_root / POINTS_FILE_NAME, points_payload)
+        points_payload = build_points_payload(
+            a_csc=spatial_matrix(cnm),
+            height=height,
+            n_components=n_components,
+            rows=rows,
+            metric_keys=metric_keys,
+        )
+        write_points(staging_root / POINTS_FILE_NAME, points_payload)
 
-    background_specs = write_background_cache(
-        cache_save_fold=cache_root,
-        mmap_load_path=mmap_path,
-        height=height,
-        width=width,
-        trace_length=n_frames,
-    )
+        background_specs = write_background_cache(
+            cache_save_fold=staging_root,
+            mmap_load_path=mmap_path,
+            height=height,
+            width=width,
+            trace_length=n_frames,
+        )
 
-    sources = {
-        "model": source_signature(model_path),
-        "mmap": source_signature(mmap_path),
-    }
-
-    metadata = {
-        "cache_version": CACHE_VERSION,
-        "full_height": int(height),
-        "full_width": int(width),
-        "trace_length": int(n_frames),
-        "frame_rate_hz": float(fr_hz),
-        "neuron_count": int(n_components),
-        "metric_keys": list(metric_keys),
-        "trace_sources": {
-            "c": {
-                "file": TRACE_SOURCE_FILES["c"],
-                "label": "C",
-                "description": "CNMF-E fitted temporal trace",
-                "dtype": "float32",
+        metadata = {
+            "full_height": int(height),
+            "full_width": int(width),
+            "trace_length": int(n_frames),
+            "frame_rate_hz": float(fr_hz),
+            "neuron_count": int(n_components),
+            "trace_sources": {
+                "c": {
+                    "file": TRACE_SOURCE_FILES["c"],
+                    "dtype": TRACE_DTYPE,
+                },
+                "c_plus_yra": {
+                    "file": TRACE_SOURCE_FILES["c_plus_yra"],
+                    "dtype": TRACE_DTYPE,
+                },
+                YBG_PROJECTION_SOURCE_KEY: {
+                    "file": TRACE_SOURCE_FILES[YBG_PROJECTION_SOURCE_KEY],
+                    "dtype": TRACE_DTYPE,
+                },
             },
-            "c_plus_yra": {
-                "file": TRACE_SOURCE_FILES["c_plus_yra"],
-                "label": "C + YrA",
-                "description": "CNMF-E fitted temporal trace plus YrA residual",
-                "dtype": "float32",
+            "dff": {
+                "projection_source": YBG_PROJECTION_SOURCE_KEY,
+                "baseline_method": "median",
+                "min_baseline_abs": float(DFF_MIN_BASELINE_ABS),
             },
-            YBG_PROJECTION_SOURCE_KEY: {
-                "file": TRACE_SOURCE_FILES[YBG_PROJECTION_SOURCE_KEY],
-                "label": "projected Ybg",
-                "description": "CNMF-E ring background projected into each neuron's trace space",
-                "dtype": "float32",
+            "backgrounds": background_specs,
+            "default_background_key": "bandpass",
+            "image": {
+                "shape": [int(height), int(width)],
+                "axis_order": IMAGE_AXIS_ORDER,
+                "origin": IMAGE_ORIGIN,
+                "x_direction": IMAGE_X_DIRECTION,
+                "y_direction": IMAGE_Y_DIRECTION,
+                "coordinate_indexing": COORDINATE_INDEXING,
+                "pixel_flatten_order": PIXEL_FLATTEN_ORDER,
             },
-        },
-        "dff": {
-            "projection_source": YBG_PROJECTION_SOURCE_KEY,
-            "baseline_method": "median",
-            "min_baseline_abs": float(DFF_MIN_BASELINE_ABS),
-            "description": "DF/F is computed in the browser with MATLAB CNMF-E style: C - bl or C - bl + YrA divided by the median of projected Ybg.",
-        },
-        "points_file": POINTS_FILE_NAME,
-        "backgrounds": background_specs,
-        "default_background_key": "bandpass",
-        "sources": sources,
-    }
-    (cache_root / METADATA_FILE_NAME).write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    validate_cache(cache_root)
+            "traces": {
+                "shape": [int(n_components), int(n_frames)],
+                "layout": TRACE_LAYOUT,
+                "dtype": TRACE_DTYPE,
+            },
+            "time": {
+                "coordinate": TIME_COORDINATE,
+                "frame_indexing": FRAME_INDEXING,
+                "sample_rate_hz": float(fr_hz),
+            },
+            "selection": {
+                "roi_bounds": ROI_BOUNDS,
+                "qc_lower": QC_LOWER_BOUND,
+                "qc_upper": QC_UPPER_BOUND,
+                "region_boundary": REGION_BOUNDARY,
+            },
+        }
+        (staging_root / METADATA_FILE_NAME).write_text(
+            json.dumps(metadata, indent=2),
+            encoding="utf-8",
+        )
+
+    publish_cache_directory(
+        cache_target,
+        build=build_staged_cache,
+        protected_inputs=(model_path, mmap_path),
+    )
 
     print(f"[cache] ready {cache_root}")
     return cache_root

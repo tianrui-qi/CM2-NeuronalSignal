@@ -8,16 +8,6 @@
   gap: var(--ui-spacing);
 }
 
-.region-list-empty {
-  min-height: var(--control-height);
-  padding: var(--ui-spacing);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
-  background: rgba(255, 248, 239, 0.05);
-  color: var(--text-subtle);
-  font-size: var(--font-size-sm);
-}
-
 .region-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 64px 72px 48px;
@@ -28,7 +18,7 @@
   padding: 0 var(--ui-spacing);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
-  background: var(--surface-row);
+  background: var(--surface-interactive);
   color: rgba(247, 241, 231, 0.82);
   font-size: var(--font-size-sm);
 }
@@ -47,11 +37,13 @@
 
 .region-row-previewable:hover {
   border-color: var(--border-hover);
-  background: var(--surface-row-hover);
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    var(--surface-interactive);
 }
 
 .region-row-summary {
-  background: var(--surface-row);
+  background: var(--surface-interactive);
   border-color: var(--border-soft);
 }
 
@@ -76,8 +68,16 @@
 
 .region-row-add:hover {
   border-color: var(--border-hover);
-  background: var(--surface-row-hover);
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    transparent;
   color: var(--text);
+}
+
+.region-row-add:active {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    transparent;
 }
 
 .region-row-add:focus-visible {
@@ -109,9 +109,9 @@
 }
 
 .region-row-count-active {
-  background: rgba(250, 189, 94, 0.18);
-  box-shadow: inset 0 0 0 1px var(--accent-warm);
-  color: #fff6e5;
+  background: var(--surface-selected);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--text);
 }
 
 .region-row-header .region-row-count {
@@ -138,6 +138,19 @@
   box-sizing: border-box;
   font-size: 0;
   line-height: 0;
+  background: transparent;
+}
+
+.region-row-icon.mini-btn:hover:not(:disabled) {
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    transparent;
+}
+
+.region-row-icon.mini-btn:active:not(:disabled) {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    transparent;
 }
 
 .region-row-icon.mini-btn:disabled {
