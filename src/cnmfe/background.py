@@ -94,19 +94,3 @@ def imagej_bandpass(image_yx: np.ndarray) -> np.ndarray:
     spectrum *= _build_imagej_bandpass_filter(padded_size).astype(spectrum.real.dtype, copy=False)
     filtered = scipy_fft.irfft2(spectrum, s=padded.shape).astype(np.float32, copy=False)
     return filtered[y0 : y0 + height, x0 : x0 + width]
-
-
-def imagej_auto_contrast_uint8(image: np.ndarray, saturated_percent: float = 0.35) -> np.ndarray:
-    arr = np.asarray(image, dtype=np.float32)
-    finite = arr[np.isfinite(arr)]
-    if finite.size == 0:
-        return np.zeros(arr.shape, dtype=np.uint8)
-    lo = float(np.percentile(finite, saturated_percent))
-    hi = float(np.percentile(finite, 100.0 - saturated_percent))
-    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
-        lo = float(np.min(finite))
-        hi = float(np.max(finite))
-    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
-        return np.zeros(arr.shape, dtype=np.uint8)
-    scaled = np.clip((arr - lo) / (hi - lo), 0.0, 1.0)
-    return np.round(scaled * 255.0).astype(np.uint8)

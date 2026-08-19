@@ -402,7 +402,7 @@ export function createQualityControlFeature({
     }
 
     const button = document.getElementById(`download-qc-${format}-btn`);
-    const filename = `cm2-qc-${plotImage.sanitizeFilenamePart(
+    const filename = `cm2-neuronalsignal-qc-${plotImage.sanitizeFilenamePart(
       getState().activeBlueprintMetric,
     )}.${format}`;
     button?.setAttribute("aria-busy", "true");

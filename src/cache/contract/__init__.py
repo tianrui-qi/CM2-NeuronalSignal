@@ -1,4 +1,4 @@
-"""Public boundary for the canonical CM2 viewer-cache contract."""
+"""Public boundary for the canonical CM2-NeuronalSignal viewer-cache contract."""
 
 from __future__ import annotations
 

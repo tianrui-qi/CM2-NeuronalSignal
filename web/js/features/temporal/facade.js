@@ -12,7 +12,7 @@ export const TEMPORAL_PLOT_DOWNLOADS = Object.freeze({
       svg: "download-heatmap-svg-btn",
       png: "download-heatmap-png-btn",
     }),
-    filenamePrefix: "cm2-heatmap",
+    filenamePrefix: "cm2-neuronalsignal-heatmap",
     exportStyle: "paper-heatmap",
   }),
   trace: Object.freeze({
@@ -22,7 +22,7 @@ export const TEMPORAL_PLOT_DOWNLOADS = Object.freeze({
       svg: "download-trace-svg-btn",
       png: "download-trace-png-btn",
     }),
-    filenamePrefix: "cm2-trace",
+    filenamePrefix: "cm2-neuronalsignal-trace",
     exportStyle: "paper-trace",
   }),
 });

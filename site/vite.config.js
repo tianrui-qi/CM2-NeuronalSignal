@@ -19,7 +19,6 @@ export default defineConfig(async () => {
           assets: {
             binding: "ASSETS",
             directory: "./public",
-            run_worker_first: true,
           },
         },
       }),

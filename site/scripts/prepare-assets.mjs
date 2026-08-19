@@ -17,10 +17,13 @@ const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(siteRoot, "..");
 const publicRoot = resolve(siteRoot, "public");
 const webRoot = resolve(repositoryRoot, "web");
-const cacheRoot = resolve(repositoryRoot, "data", "cache", "Y-corr85-pnr12");
 const deployment = JSON.parse(
   await readFile(resolve(siteRoot, "cache-deployment.json"), "utf8"),
 );
+const cacheRoot = resolve(repositoryRoot, "data", "cache", deployment.storageKey);
+
+const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const CACHE_PATH_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/u;
 
 function requireInside(parent, child) {
   const candidate = relative(resolve(parent), resolve(child));
@@ -51,6 +54,38 @@ async function verifyFile(source, specification) {
   if ((await sha256(source)) !== specification.sha256) {
     throw new Error(`Unexpected SHA-256 for ${source}`);
   }
+}
+
+function validateCacheEntry(relativePath, specification) {
+  const pathSegments = relativePath.split("/");
+  if (
+    pathSegments.length === 0
+    || pathSegments.some((segment) => (
+      segment === ""
+      || segment === "."
+      || segment === ".."
+      || !CACHE_PATH_SEGMENT_PATTERN.test(segment)
+    ))
+  ) {
+    throw new Error(`Invalid cache manifest path: ${relativePath}`);
+  }
+  if (
+    !Number.isSafeInteger(specification.bytes)
+    || specification.bytes <= 0
+    || !SHA256_PATTERN.test(specification.sha256)
+  ) {
+    throw new Error(`Invalid cache manifest entry: ${relativePath}`);
+  }
+  if (
+    specification.chunkBytes !== undefined
+    && (
+      !Number.isSafeInteger(specification.chunkBytes)
+      || specification.chunkBytes <= 0
+    )
+  ) {
+    throw new Error(`Invalid chunk size for ${relativePath}`);
+  }
+  return pathSegments;
 }
 
 async function findPlotlyBundle() {
@@ -92,7 +127,7 @@ async function findPlotlyBundle() {
     }
   }
   throw new Error(
-    "Plotly bundle not found. Activate the cm2 conda environment or set CM2_PLOTLY_BUNDLE.",
+    "Plotly bundle not found. Activate the cm2-neuronalsignal conda environment or set CM2_PLOTLY_BUNDLE.",
   );
 }
 
@@ -113,7 +148,19 @@ async function splitFile(source, destinationRoot, specification) {
       await mkdir(dirname(destination), { recursive: true });
       const destinationHandle = await open(destination, "w");
       try {
-        await destinationHandle.write(buffer);
+        let written = 0;
+        while (written < buffer.length) {
+          const writeResult = await destinationHandle.write(
+            buffer,
+            written,
+            buffer.length - written,
+            written,
+          );
+          if (writeResult.bytesWritten <= 0) {
+            throw new Error(`Short write while splitting ${source}`);
+          }
+          written += writeResult.bytesWritten;
+        }
       } finally {
         await destinationHandle.close();
       }
@@ -123,6 +170,18 @@ async function splitFile(source, destinationRoot, specification) {
   } finally {
     await sourceHandle.close();
   }
+}
+
+async function requireMissing(path) {
+  try {
+    await stat(path);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  throw new Error(`Forbidden static deployment path: ${path}`);
 }
 
 requireInside(siteRoot, publicRoot);
@@ -139,17 +198,26 @@ await verifyFile(plotlyBundle, deployment.plotly);
 await copyFile(plotlyBundle, join(publicRoot, "vendor", "plotly.min.js"));
 
 for (const [relativePath, specification] of Object.entries(deployment.cache)) {
-  const source = join(cacheRoot, relativePath);
+  const pathSegments = validateCacheEntry(relativePath, specification);
+  const source = join(cacheRoot, ...pathSegments);
+  requireInside(cacheRoot, source);
   await verifyFile(source, specification);
   if (specification.chunkBytes === undefined) {
-    await copyFile(source, join(publicRoot, "cache", relativePath));
-  } else {
-    await splitFile(
-      source,
-      join(publicRoot, "_cache-chunks", relativePath),
-      specification,
+    const destination = join(
+      publicRoot,
+      "_cache-assets",
+      specification.sha256,
+      "payload.blob",
     );
+    requireInside(publicRoot, destination);
+    await copyFile(source, destination);
+  } else {
+    const destinationRoot = join(publicRoot, "_cache-chunks", specification.sha256);
+    requireInside(publicRoot, destinationRoot);
+    await splitFile(source, destinationRoot, specification);
   }
 }
+
+await requireMissing(join(publicRoot, "cache"));
 
 console.log(`Prepared deployable viewer assets in ${publicRoot}`);

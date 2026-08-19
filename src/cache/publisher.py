@@ -89,7 +89,9 @@ def _assert_replaceable_target(target: Path) -> None:
     try:
         validate_cache(target)
     except (FileNotFoundError, OSError, UnicodeError, ValueError) as error:
-        raise ValueError(f"Existing target is not a recognizable CM2 cache: {target}") from error
+        raise ValueError(
+            f"Existing target is not a recognizable CM2-NeuronalSignal cache: {target}"
+        ) from error
 
 
 def _new_workspace(target: Path) -> _PublishWorkspace:

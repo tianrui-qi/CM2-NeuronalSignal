@@ -1,4 +1,4 @@
-# CM2 Web Instructions
+# CM2-NeuronalSignal Web Instructions
 
 ## Scope And Stack
 
@@ -53,6 +53,8 @@ shape. `activeWorkflowSection` is runtime-only.
 
 - Ordinary mode: a complete `localStorage` value at
   `cm2.ui-state:v1:<serve_path stem>` is authoritative for the current origin.
+  The lowercase `cm2` prefix is a stable persistence namespace and does not
+  follow repository display-name changes.
   Keep profile stems unique for datasets served from the same origin. Only an
   absent value seeds from the Default Profile, or from Factory State when no
   profile exists; a malformed existing value resets to Factory State instead.

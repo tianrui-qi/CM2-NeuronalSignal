@@ -2,7 +2,7 @@ import { createConfirmationDialog } from "../shared/ui/confirmation-dialog.js";
 
 
 /**
- * Browser application boundary for the CM2 viewer.
+ * Browser application boundary for the CM2-NeuronalSignal viewer.
  *
  * Features own their policy and rendering. This module owns only startup,
  * persisted-state hydration, cross-feature effect wiring, and the established

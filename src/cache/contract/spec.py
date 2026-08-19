@@ -1,4 +1,4 @@
-"""Canonical CM2 viewer-cache wire specification."""
+"""Canonical CM2-NeuronalSignal viewer-cache wire specification."""
 
 from __future__ import annotations
 

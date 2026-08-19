@@ -4,7 +4,6 @@ import {
   countRoiSelectableNeurons,
   countRoiSelectedNeurons,
   createRoi,
-  createRoiId,
   neuronIdPassesRoiSelection,
   normalizePersistedRoiState,
   pointIndexInRoiBox,

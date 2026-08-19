@@ -13,7 +13,6 @@ from ..mmap import parse_encoded_mmap_name
 from .contract import (
     DFF_DENOMINATOR_DTYPE,
     DFF_DENOMINATOR_FILE_NAME,
-    DFF_MIN_BASELINE_ABS,
 )
 
 

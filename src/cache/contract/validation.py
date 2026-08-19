@@ -1,4 +1,4 @@
-"""Validate the canonical CM2 viewer-cache contract.
+"""Validate the canonical CM2-NeuronalSignal viewer-cache contract.
 
 This validator owns the Python-side wire-shape checks plus cross-file
 equalities, coordinate bounds, trace-row ownership, artifact presence, and

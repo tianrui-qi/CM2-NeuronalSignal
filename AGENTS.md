@@ -1,4 +1,4 @@
-# CM2 Repository Instructions
+# CM2-NeuronalSignal Repository Instructions
 
 ## Scope
 
@@ -8,9 +8,10 @@ and browser verification. For `site/**`, also read `site/AGENTS.md`; it owns
 the Sites deployment adapter. This file owns repository safety, pipeline,
 cache, serve, profile, and scientific boundaries.
 
-CM2 is a calcium-imaging project built around CaImAn CNMF-E. Its four explicit
-terminal stages produce an mmap, a CNMF-E HDF5 model, a browser cache, and a
-local Flask viewer.
+CM2-NeuronalSignal is the neuron-resolved calcium-signal extraction, quality
+control, temporal-analysis, and viewer repository for the Bio-CM2 imaging
+platform. Its four explicit terminal stages produce an mmap, a CNMF-E HDF5
+model, a browser cache, and a local Flask viewer.
 
 ## Data Safety
 
@@ -30,10 +31,10 @@ local Flask viewer.
 
 ## Quick Start And Stage Ownership
 
-Run from the repository root in the `cm2` conda environment:
+Run from the repository root in the `cm2-neuronalsignal` conda environment:
 
 ```powershell
-conda activate cm2
+conda activate cm2-neuronalsignal
 python -m script.mmap
 python -m script.cnmfe
 python -m script.cache
@@ -157,6 +158,8 @@ Ordinary `python -m script.serve` behavior:
 - a complete browser `localStorage` state is authoritative at
   `cm2.ui-state:v1:<serve_path stem>` for the current origin; keep profile
   stems unique for datasets served from the same origin;
+- the lowercase `cm2` storage namespace is a stable persistence contract and
+  does not follow repository display-name changes;
 - only an absent local state seeds from the Default Profile, or from Factory
   State when no profile exists;
 - an existing malformed local state is rejected and replaced by Factory State,

@@ -1,4 +1,9 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+
+const deployment = JSON.parse(
+  await readFile(new URL("../cache-deployment.json", import.meta.url), "utf8"),
+);
 
 const requestedBaseUrl = process.argv.find((value) => /^https?:\/\//u.test(value));
 const baseUrl = new URL(requestedBaseUrl ?? "http://127.0.0.1:8788/");
@@ -11,9 +16,40 @@ async function requireResponse(path, expectedStatus = 200, init = undefined) {
   return response;
 }
 
+function requireCachePolicy(response, path) {
+  const directives = new Set(
+    (response.headers.get("cache-control") ?? "")
+      .split(",")
+      .map((directive) => directive.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (!directives.has("no-store") || !directives.has("no-transform")) {
+    throw new Error(`${path}: cache response must use no-store and no-transform.`);
+  }
+}
+
+function expectedContentType(relativePath) {
+  return relativePath.endsWith(".json")
+    ? "application/json; charset=utf-8"
+    : "application/octet-stream";
+}
+
+async function hashResponseBody(response, relativePath) {
+  if (response.body === null) {
+    throw new Error(`${relativePath}: response body is missing.`);
+  }
+  const hash = createHash("sha256");
+  let bytes = 0;
+  for await (const chunk of response.body) {
+    hash.update(chunk);
+    bytes += chunk.length;
+  }
+  return { bytes, sha256: hash.digest("hex") };
+}
+
 const root = await requireResponse("/");
-if (!(await root.text()).includes("CM2 Neuron Viewer")) {
-  throw new Error("The root page is not the CM2 viewer.");
+if (!(await root.text()).includes("CM2-NeuronalSignal")) {
+  throw new Error("The root page is not CM2-NeuronalSignal.");
 }
 
 const profileResponse = await requireResponse("/api/ui-state");
@@ -31,42 +67,81 @@ if (
   throw new Error("Default profile descriptor does not match browser mode.");
 }
 
-await requireResponse("/api/ui-state", 405, {
-  method: "PUT",
-  headers: { "Content-Type": "application/json" },
-  body: "{}",
+for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+  await requireResponse("/api/ui-state", 405, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
+for (const method of ["GET", "HEAD"]) {
+  const unknown = await requireResponse("/cache/not-declared.bin", 404, { method });
+  requireCachePolicy(unknown, `/cache/not-declared.bin (${method})`);
+}
+
+for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+  const rejectedWrite = await requireResponse("/cache/metadata.json", 405, { method });
+  requireCachePolicy(rejectedWrite, `/cache/metadata.json (${method})`);
+  if (rejectedWrite.headers.get("allow") !== "GET, HEAD") {
+    throw new Error("Cache method rejection must advertise GET and HEAD.");
+  }
+}
+
+let totalCacheBytes = 0;
+for (const [relativePath, specification] of Object.entries(deployment.cache)) {
+  const canonicalPath = `/cache/${relativePath}`;
+  const contentType = expectedContentType(relativePath);
+
+  const head = await requireResponse(canonicalPath, 200, { method: "HEAD" });
+  requireCachePolicy(head, `${canonicalPath} (HEAD)`);
+  if (head.headers.get("content-length") !== String(specification.bytes)) {
+    throw new Error(`${relativePath}: HEAD response length is incorrect.`);
+  }
+  if (head.headers.get("content-type") !== contentType) {
+    throw new Error(`${relativePath}: HEAD response content type is incorrect.`);
+  }
+  if ((await head.arrayBuffer()).byteLength !== 0) {
+    throw new Error(`${relativePath}: HEAD response must not contain a body.`);
+  }
+
+  const response = await requireResponse(canonicalPath);
+  requireCachePolicy(response, canonicalPath);
+  if (response.headers.get("content-length") !== String(specification.bytes)) {
+    throw new Error(`${relativePath}: GET response length is incorrect.`);
+  }
+  if (response.headers.get("content-type") !== contentType) {
+    throw new Error(`${relativePath}: GET response content type is incorrect.`);
+  }
+  const actual = await hashResponseBody(response, relativePath);
+  if (actual.bytes !== specification.bytes || actual.sha256 !== specification.sha256) {
+    throw new Error(`${relativePath}: canonical bytes do not match the deployment manifest.`);
+  }
+  totalCacheBytes += actual.bytes;
+}
+
+const rangeResponse = await requireResponse("/cache/metadata.json", 200, {
+  headers: { Range: "bytes=0-0" },
 });
-await requireResponse("/cache/not-declared.bin", 404);
-
-const metadata = await requireResponse("/cache/metadata.json");
-if (metadata.headers.get("cache-control") !== "no-store") {
-  throw new Error("Cache responses must use Cache-Control: no-store.");
-}
-
-const traceHead = await requireResponse(
-  "/cache/temporal/c.float32",
-  200,
-  { method: "HEAD" },
-);
-if (traceHead.headers.get("content-length") !== "44971776") {
-  throw new Error("Trace response length is incorrect.");
-}
-const trace = await requireResponse("/cache/temporal/c.float32");
-if (trace.body === null) {
-  throw new Error("Trace response body is missing.");
-}
-const traceHash = createHash("sha256");
-let traceBytes = 0;
-for await (const chunk of trace.body) {
-  traceHash.update(chunk);
-  traceBytes += chunk.length;
-}
-const traceDigest = traceHash.digest("hex");
+requireCachePolicy(rangeResponse, "/cache/metadata.json (Range)");
 if (
-  traceBytes !== 44_971_776
-  || traceDigest !== "501eeb4fecb19150bb329d21e0712b818bae2a5180c5584d7d99062ae159a3a6"
+  rangeResponse.headers.get("content-range") !== null
+  || rangeResponse.headers.get("content-length") !== String(deployment.cache["metadata.json"].bytes)
 ) {
-  throw new Error("Chunked trace reconstruction changed the canonical bytes.");
+  throw new Error("Canonical cache routes must ignore transport-layer Range requests.");
+}
+await rangeResponse.body?.cancel();
+
+const queryResponse = await requireResponse("/cache/metadata.json?cachebust=1", 200, {
+  method: "GET",
+});
+requireCachePolicy(queryResponse, "/cache/metadata.json?cachebust=1");
+const queryActual = await hashResponseBody(queryResponse, "metadata.json?cachebust=1");
+if (
+  queryActual.bytes !== deployment.cache["metadata.json"].bytes
+  || queryActual.sha256 !== deployment.cache["metadata.json"].sha256
+) {
+  throw new Error("Canonical cache query parameters changed the response bytes.");
 }
 
 const health = await (await requireResponse("/health")).json();
@@ -74,4 +149,7 @@ if (health.ok !== true) {
   throw new Error("Health route did not report success.");
 }
 
-console.log(`CM2 Sites runtime smoke passed (${traceBytes} trace bytes, SHA-256 ${traceDigest}).`);
+console.log(
+  `CM2-NeuronalSignal Sites runtime smoke passed: `
+  + `${Object.keys(deployment.cache).length} cache artifacts, ${totalCacheBytes} verified bytes.`,
+);

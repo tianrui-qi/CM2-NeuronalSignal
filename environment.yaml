@@ -1,4 +1,4 @@
-name: cm2
+name: cm2-neuronalsignal
 channels:
   - conda-forge
   - defaults

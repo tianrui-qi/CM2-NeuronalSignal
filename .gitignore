@@ -7,10 +7,6 @@
 **/temp.*
 **/tmp/
 
-# lighting
-/log/
-/ckpt/
-
 # hydra
 /outputs/
 /multirun/
