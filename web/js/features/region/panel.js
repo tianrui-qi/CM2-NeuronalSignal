@@ -1,4 +1,5 @@
 import * as model from "./model.js";
+import { createConfirmationDialog } from "../../shared/ui/confirmation-dialog.js";
 import { describeControl } from "../../shared/ui/control-tooltip.js";
 
 
@@ -25,6 +26,8 @@ export function createRegionPanel({
   document,
   getComputedStyle = (element) => globalThis.getComputedStyle(element),
 }) {
+  const confirmationDialog = createConfirmationDialog({ document });
+
   /**
    * @param {HTMLElement} row
    * @param {number} clientX
@@ -97,7 +100,7 @@ export function createRegionPanel({
    *   className: string,
    *   label: string,
    *   description?: string,
-   *   onClick: () => void,
+   *   onClick: (trigger: HTMLButtonElement) => void,
    *   disabled?: boolean,
    * }} options
    */
@@ -116,9 +119,25 @@ export function createRegionPanel({
     button.disabled = disabled;
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      onClick();
+      onClick(button);
     });
     return button;
+  }
+
+  /** @param {number} deletedIndex */
+  function focusTargetAfterDelete(deletedIndex) {
+    const remainingDeleteButtons = Array.from(
+      document.querySelectorAll("#region-list .region-row-delete"),
+    );
+    if (remainingDeleteButtons.length) {
+      return remainingDeleteButtons[
+        Math.min(deletedIndex, remainingDeleteButtons.length - 1)
+      ] ?? null;
+    }
+    return (
+      document.querySelector("#region-list .region-row-add")
+      ?? document.querySelector('[data-section-toggle="region"]')
+    );
   }
 
   /** @param {Record<string, any>} state */
@@ -227,8 +246,23 @@ export function createRegionPanel({
       const deleteButton = makeIconButton({
         className: "region-row-delete",
         label: `Delete Region ${index + 1}`,
-        description: `Delete Region ${index + 1}`,
-        onClick: () => onDelete(index),
+        description: `Delete Region ${index + 1} and its boundary`,
+        onClick: (trigger) => {
+          const regionName = `Region ${index + 1}`;
+          confirmationDialog.open({
+            title: `Delete ${regionName}?`,
+            description: (
+              `Delete ${regionName} and its boundary. It will no longer contribute `
+              + "to the Region filter."
+            ),
+            confirmLabel: "Delete Region",
+            confirmDescription: `Delete ${regionName} and remove its boundary from the Region filter`,
+            cancelDescription: `Keep ${regionName} and close this dialog`,
+            trigger,
+            onConfirm: () => onDelete(index),
+            focusAfterConfirm: () => focusTargetAfterDelete(index),
+          });
+        },
       });
       const action = document.createElement("div");
       action.className = "region-row-action";

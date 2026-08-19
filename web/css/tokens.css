@@ -71,5 +71,5 @@
   --z-modal: 30;
   --z-menu: 45;
 
-  --overlay-width: min(460px, calc(100vw - 36px));
+  --overlay-width: min(340px, calc(100vw - 36px));
 }

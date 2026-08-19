@@ -1,5 +1,5 @@
-import { createRoiConfirmationDialog } from "./confirmation-dialog.js";
 import { placeAnchoredPopover } from "../../shared/ui/anchored-popover.js";
+import { createConfirmationDialog } from "../../shared/ui/confirmation-dialog.js";
 
 
 /**
@@ -13,7 +13,7 @@ import { placeAnchoredPopover } from "../../shared/ui/anchored-popover.js";
  * }} dependencies
  */
 export function createRoiPanel({ document, scheduleTimeout }) {
-  const confirmationDialog = createRoiConfirmationDialog({ document });
+  const confirmationDialog = createConfirmationDialog({ document });
   let activeColorTrigger = null;
   let colorPickerGeneration = 0;
   let colorPickerSequence = 0;
@@ -325,7 +325,7 @@ export function createRoiPanel({ document, scheduleTimeout }) {
       const boxButton = makeRowAction({
         className: "roi-row-box",
         label: `Edit ${rowView.name} box`,
-        description: `Edit ${rowView.name}'s box`,
+        description: `Edit the box for ${rowView.name}`,
         onClick: () => editBox(rowView.id),
       });
 
@@ -373,14 +373,14 @@ export function createRoiPanel({ document, scheduleTimeout }) {
         onClick: (trigger) => {
           closeColorPicker();
           confirmationDialog.open({
-            title: `Clear ${rowView.name} selections?`,
+            title: `Clear selected neurons from ${rowView.name}?`,
             description: (
               `Remove all selected neurons from ${rowView.name}. `
               + "Its box and color will remain."
             ),
-            confirmLabel: "Clear neurons",
+            confirmLabel: "Clear Neurons",
             confirmDescription: (
-              `Remove all selected neurons from ${rowView.name}`
+              `Remove all selected neurons from ${rowView.name}; keep its box and color`
             ),
             trigger,
             onConfirm: () => clear(rowView.id),
@@ -392,7 +392,7 @@ export function createRoiPanel({ document, scheduleTimeout }) {
         className: "roi-row-delete",
         label: `Delete ${rowView.name}`,
         description: (
-          `Delete ${rowView.name}, its box, and its selections`
+          `Delete ${rowView.name}, including its box and selected neurons`
         ),
         onClick: (trigger) => {
           const fallbackRoiId = rows[rowIndex + 1]?.id ?? rows[rowIndex - 1]?.id ?? null;
@@ -400,11 +400,11 @@ export function createRoiPanel({ document, scheduleTimeout }) {
           confirmationDialog.open({
             title: `Delete ${rowView.name}?`,
             description: (
-              `Delete ${rowView.name}, its box, and its selections.`
+              `Delete ${rowView.name}, including its box and selected neurons.`
             ),
             confirmLabel: "Delete ROI",
             confirmDescription: (
-              `Permanently delete ${rowView.name}, its box, and its selections`
+              `Delete ${rowView.name}, its box, and its selected neurons`
             ),
             trigger,
             onConfirm: () => deleteRow(rowView.id),
@@ -469,7 +469,7 @@ export function createRoiPanel({ document, scheduleTimeout }) {
     const addBoxButton = makeRowAction({
       className: "roi-row-box",
       label: `Add ${nextName} with box`,
-      description: `Define a box for ${nextName}`,
+      description: `Create ${nextName} with a box`,
       onClick: () => addWithBox(nextColor),
     });
 

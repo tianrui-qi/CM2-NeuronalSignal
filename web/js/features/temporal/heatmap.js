@@ -541,6 +541,14 @@ export function createTemporalHeatmap({
     return { range: currentRange };
   }
 
+  function clearControls() {
+    const colorbar = document.getElementById("heatmap-colorbar");
+    colorbar?.classList.add("hidden");
+    colorbar?.replaceChildren();
+    setDownloadEnabled(false);
+    return true;
+  }
+
   /**
    * @param {{
    *   plotly: any,
@@ -671,6 +679,7 @@ export function createTemporalHeatmap({
   }
 
   return {
+    clearControls,
     exportImage,
     render,
   };

@@ -27,8 +27,10 @@ export function createWorkflowPanel({
 }) {
   let wired = false;
 
-  function renderChrome() {
+  /** @param {{ hiddenSections?: readonly string[] }} [options] */
+  function renderChrome({ hiddenSections = [] } = {}) {
     const state = store.getSnapshot();
+    const hiddenSectionIds = new Set(hiddenSections);
     if (!sectionIds.includes(state.activeWorkflowSection)) {
       commands.setActiveWorkflowSection(sectionIds[0]);
     }
@@ -36,10 +38,12 @@ export function createWorkflowPanel({
     for (const section of sectionIds) {
       const isActive = section === state.activeWorkflowSection;
       const isOpen = Boolean(state.openSections[section]);
+      const isHidden = hiddenSectionIds.has(section);
       const sectionElement = document.querySelector(
         `[data-workflow-section="${section}"]`,
       );
-      sectionElement?.classList.remove("hidden");
+      sectionElement?.classList.toggle("hidden", isHidden);
+      sectionElement?.setAttribute("aria-hidden", String(isHidden));
       sectionElement?.classList.toggle("active", isActive);
       sectionElement?.classList.toggle("collapsed", !isOpen);
 
@@ -64,8 +68,11 @@ export function createWorkflowPanel({
     const state = store.getSnapshot();
     const next = normalizeSection(section, state.activeWorkflowSection);
     const changed = state.activeWorkflowSection !== next;
+    const wasOpen = Boolean(state.openSections[next]);
     commands.activateWorkflowSection(next);
-    effects.persistUiState();
+    if (!wasOpen) {
+      effects.persistUiState();
+    }
     effects.renderSections({ includeMap: changed, includePlots });
 
     if (scroll) {
@@ -96,7 +103,6 @@ export function createWorkflowPanel({
 
   /**
    * @param {{
-   *   persistUiState: () => void,
    *   renderSections: (options: { includeMap: boolean, includePlots: boolean }) => void,
    * }} effects
    */
@@ -112,7 +118,7 @@ export function createWorkflowPanel({
     let bestDistance = Infinity;
     for (const section of sectionIds) {
       const element = document.querySelector(`[data-workflow-section="${section}"]`);
-      if (!element) {
+      if (!element || element.classList.contains("hidden")) {
         continue;
       }
       const distance = Math.abs(element.getBoundingClientRect().top - panelTop);
@@ -124,7 +130,6 @@ export function createWorkflowPanel({
 
     if (bestSection !== state.activeWorkflowSection) {
       commands.setActiveWorkflowSection(bestSection);
-      effects.persistUiState();
       effects.renderSections({
         includeMap: true,
         includePlots: isTemporalSection(bestSection),

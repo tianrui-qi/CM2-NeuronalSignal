@@ -7,7 +7,6 @@
  *   store: { getSnapshot: () => Record<string, any> },
  *   commands: {
  *     replaceOpenSections: (openSections: Record<string, boolean>) => unknown,
- *     setActiveWorkflowSection: (section: string) => unknown,
  *     setOverlayWidth: (width: number | null) => unknown,
  *   },
  *   selectors: {
@@ -23,10 +22,13 @@
  *   },
  *   shell: Record<string, any>,
  *   persistence: {
- *     save: () => void,
- *     load: () => Promise<boolean>,
+ *     save: () => boolean,
+ *     load: () => Promise<Record<string, string>>,
  *     flush: (options?: { keepalive?: boolean }) => Promise<void>,
  *     sendPendingBeacon: () => void,
+ *     clearAll: () => boolean,
+ *     restoreDefault: () => boolean,
+ *     canRestoreDefault: () => boolean,
  *   },
  *   logger?: Pick<Console, "error">,
  * }} dependencies
@@ -53,12 +55,8 @@ export function createUiStateController({
         return false;
       }
       features.temporal.applyPersistedState(parsed);
-      features.background.setActive(parsed.activeBackgroundKey);
+      features.background.applyPersistedState(parsed);
       features.qualityControl.applyPersistedState(parsed);
-      commands.setActiveWorkflowSection(shell.normalizeSection(
-        parsed.activeWorkflowSection,
-        store.getSnapshot().activeWorkflowSection,
-      ));
       commands.replaceOpenSections(shell.normalizeOpenSections(parsed.openSections));
       features.region.applyPersistedState(parsed);
       commands.setOverlayWidth(shell.normalizeOverlayWidth(parsed.overlayWidth));
@@ -71,10 +69,13 @@ export function createUiStateController({
 
   return Object.freeze({
     apply,
+    canRestoreDefault: persistence.canRestoreDefault,
+    clearAll: persistence.clearAll,
     serialize,
     save: persistence.save,
     load: persistence.load,
     flush: persistence.flush,
+    restoreDefault: persistence.restoreDefault,
     sendPendingBeacon: persistence.sendPendingBeacon,
   });
 }

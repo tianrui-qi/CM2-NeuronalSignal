@@ -153,6 +153,8 @@ export function buildQcExportLayout(
  * }} options
  */
 export function createQualityControlHistogram({ document, renderScheduler }) {
+  let renderRevision = 0;
+
   function getPlot() {
     return /** @type {Cm2PlotElement | null} */ (
       document.getElementById("blueprint-stats-plot")
@@ -182,6 +184,7 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
    * }} options
    */
   function clear({ plotly, onDownloadEnabled = () => {} }) {
+    renderRevision += 1;
     const plot = getPlot();
     if (!plot) {
       return false;
@@ -208,6 +211,7 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
    *   } | null,
    *   colorRange: { lower: number, upper: number },
    *   resolveReflowRange?: () => { viewMin: number, viewMax: number } | null,
+   *   onDownloadButtonsEnabled?: (enabled: boolean) => void,
    *   onDownloadEnabled?: (enabled: boolean) => void,
    * }} options
    */
@@ -220,8 +224,10 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
     histogramData = null,
     colorRange,
     resolveReflowRange = null,
+    onDownloadButtonsEnabled = () => {},
     onDownloadEnabled = () => {},
   }) {
+    const revision = ++renderRevision;
     const plot = getPlot();
     if (!plot || !spec) {
       clear({ plotly, onDownloadEnabled });
@@ -251,6 +257,7 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
       label,
       histogram.counts[index],
     ]);
+    onDownloadButtonsEnabled(false);
     plot.classList.remove("hidden");
     return plotly.react(
       plot,
@@ -312,9 +319,17 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
         staticPlot: false,
       },
     ).then(() => {
+      if (revision !== renderRevision || !plot.isConnected) {
+        return false;
+      }
       onDownloadEnabled(true);
       renderScheduler.scheduleDoubleFrame(() => {
-        if (!plot.isConnected || plot.offsetWidth <= 0 || plot.offsetHeight <= 0) {
+        if (
+          revision !== renderRevision
+          || !plot.isConnected
+          || plot.offsetWidth <= 0
+          || plot.offsetHeight <= 0
+        ) {
           return;
         }
         const reflowRange = getReflowRange();
@@ -323,12 +338,19 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
         }
         try {
           Promise.resolve(plotly.Plots.resize(plot)).then(() => {
-            plotly.relayout(plot, {
+            if (
+              revision !== renderRevision
+              || !plot.isConnected
+              || !plot._fullLayout
+            ) {
+              return;
+            }
+            return plotly.relayout(plot, {
               "xaxis.autorange": false,
               "xaxis.range": [reflowRange.viewMin, reflowRange.viewMax],
               "yaxis.autorange": false,
             });
-          });
+          }).catch((error) => console.warn(error));
         } catch (error) {
           console.warn(error);
         }

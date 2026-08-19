@@ -6,10 +6,26 @@ import {
 const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
 const LITTLE_ENDIAN_HOST = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 const TRACE_SOURCE_FILES = Object.freeze({
-  c: "traces_c.float32.bin",
-  c_plus_yra: "traces_c_plus_yra.float32.bin",
-  ybg_projection: "traces_ybg_projection.float32.bin",
+  c: "temporal/c.float32",
+  c_plus_yra: "temporal/c_plus_yra.float32",
 });
+const DFF_DENOMINATOR_FILE = "temporal/f.float64";
+const BACKGROUND_SOURCE_FILES = Object.freeze({
+  mean: "background/mean.uint16",
+  std: "background/std.uint16",
+  bandpass: "background/bandpass.uint16",
+});
+const BACKGROUND_KEYS = Object.freeze([
+  "key",
+  "label",
+  "file",
+  "dtype",
+  "layout",
+  "value_offset",
+  "value_scale",
+  "value_range",
+  "auto_range",
+]);
 
 
 /** @param {unknown} value @returns {value is Record<string, any>} */
@@ -20,7 +36,7 @@ function isObject(value) {
 
 /** @param {unknown} value @returns {value is number} */
 function isPositiveInteger(value) {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
 
@@ -53,6 +69,36 @@ function requireExactKeys(payload, expectedKeys, name) {
       && actualKeys.every((key) => expectedKeys.includes(key)),
     `${name} must contain exactly ${expectedKeys.join(", ")}.`,
   );
+}
+
+
+/** @param {unknown} value */
+function isSafeRelativeCachePath(value) {
+  if (typeof value !== "string" || !value || value.includes("\\")) {
+    return false;
+  }
+  const parts = value.split("/");
+  return !value.startsWith("/")
+    && parts.every((part) => part && part !== "." && part !== "..");
+}
+
+
+/**
+ * @param {unknown} value
+ * @param {string} name
+ * @returns {{ lower: number, upper: number }}
+ */
+function requireIntegerRange(value, name) {
+  requireContract(isObject(value), `${name} must be an object.`);
+  const range = /** @type {Record<string, any>} */ (value);
+  requireExactKeys(range, ["lower", "upper"], name);
+  requireContract(
+    Number.isSafeInteger(range.lower)
+      && Number.isSafeInteger(range.upper)
+      && range.lower < range.upper,
+    `${name} must contain increasing integer lower and upper bounds.`,
+  );
+  return /** @type {{ lower: number, upper: number }} */ (range);
 }
 
 
@@ -136,24 +182,59 @@ export function adaptCacheDto(metadata, pointPayload) {
   const backgroundKeys = [];
   for (const [index, background] of meta.backgrounds.entries()) {
     requireContract(isObject(background), `backgrounds[${index}] must be an object.`);
-    requireExactKeys(background, ["key", "file", "label"], `backgrounds[${index}]`);
+    requireExactKeys(background, BACKGROUND_KEYS, `backgrounds[${index}]`);
     requireContract(
       typeof background.key === "string" && background.key.length > 0,
       `backgrounds[${index}].key must be a non-empty string.`,
     );
     requireContract(
-      typeof background.file === "string" && background.file.length > 0,
-      `backgrounds[${index}].file must be a non-empty string.`,
+      isSafeRelativeCachePath(background.file)
+        && background.file === BACKGROUND_SOURCE_FILES[background.key],
+      `backgrounds[${index}].file must be the canonical file for its key.`,
     );
     requireContract(
       typeof background.label === "string" && background.label.length > 0,
       `backgrounds[${index}].label must be a non-empty string.`,
+    );
+    requireContract(
+      background.dtype === "<u2",
+      `backgrounds[${index}].dtype must be <u2.`,
+    );
+    requireContract(
+      background.layout === "row_major",
+      `backgrounds[${index}].layout must be row_major.`,
+    );
+    requireContract(
+      typeof background.value_offset === "number"
+        && Number.isFinite(background.value_offset),
+      `backgrounds[${index}].value_offset must be finite.`,
+    );
+    requireContract(
+      isPositiveFiniteNumber(background.value_scale),
+      `backgrounds[${index}].value_scale must be positive and finite.`,
+    );
+    const valueRange = requireIntegerRange(
+      background.value_range,
+      `backgrounds[${index}].value_range`,
+    );
+    const autoRange = requireIntegerRange(
+      background.auto_range,
+      `backgrounds[${index}].auto_range`,
+    );
+    requireContract(
+      autoRange.lower >= valueRange.lower && autoRange.upper <= valueRange.upper,
+      `backgrounds[${index}].auto_range must stay within value_range.`,
     );
     backgroundKeys.push(background.key);
   }
   requireContract(
     new Set(backgroundKeys).size === backgroundKeys.length,
     "background keys must be unique.",
+  );
+  requireContract(
+    backgroundKeys.length === Object.keys(BACKGROUND_SOURCE_FILES).length
+      && backgroundKeys.every((key) => Object.hasOwn(BACKGROUND_SOURCE_FILES, key)),
+    "backgrounds must contain exactly mean, std, and bandpass.",
   );
   requireContract(
     typeof meta.default_background_key === "string"
@@ -253,16 +334,20 @@ export function adaptCacheDto(metadata, pointPayload) {
   requireContract(isObject(meta.dff), "dff must be an object.");
   requireExactKeys(
     meta.dff,
-    ["projection_source", "baseline_method", "min_baseline_abs"],
+    ["denominator_file", "dtype", "baseline_method", "min_baseline_abs"],
     "dff",
   );
   requireContract(
-    meta.dff.projection_source === "ybg_projection",
-    "dff.projection_source must be ybg_projection.",
+    meta.dff.denominator_file === DFF_DENOMINATOR_FILE,
+    `dff.denominator_file must be ${DFF_DENOMINATOR_FILE}.`,
   );
   requireContract(
-    isPositiveFiniteNumber(meta.dff.min_baseline_abs),
-    "dff.min_baseline_abs must be positive and finite.",
+    meta.dff.dtype === "<f8",
+    "dff.dtype must be <f8.",
+  );
+  requireContract(
+    meta.dff.min_baseline_abs === 1e-6,
+    "dff.min_baseline_abs must be 1e-6.",
   );
   requireContract(
     meta.dff.baseline_method === "median",
@@ -274,7 +359,7 @@ export function adaptCacheDto(metadata, pointPayload) {
   requireContract(
     sourceKeys.length === Object.keys(TRACE_SOURCE_FILES).length
       && sourceKeys.every((sourceKey) => Object.hasOwn(TRACE_SOURCE_FILES, sourceKey)),
-    "trace_sources must contain exactly c, c_plus_yra, and ybg_projection.",
+    "trace_sources must contain exactly c and c_plus_yra.",
   );
   for (const [sourceKey, expectedFile] of Object.entries(TRACE_SOURCE_FILES)) {
     const sourceSpec = meta.trace_sources[sourceKey];
@@ -304,7 +389,7 @@ export function adaptCacheDto(metadata, pointPayload) {
   );
   requireContract(
     points.trace_row.every((value) => (
-      Number.isInteger(value) && value >= 0 && value < meta.neuron_count
+      Number.isSafeInteger(value) && value >= 0 && value < meta.neuron_count
     )),
     "points.trace_row must contain rows in [0, neuron_count).",
   );
@@ -313,7 +398,7 @@ export function adaptCacheDto(metadata, pointPayload) {
     "points.trace_row must be a permutation of all trace rows.",
   );
   requireContract(
-    points.x.every(Number.isInteger) && points.y.every(Number.isInteger),
+    points.x.every(Number.isSafeInteger) && points.y.every(Number.isSafeInteger),
     "points.x and points.y must contain integer coordinates.",
   );
   requireContract(
@@ -359,6 +444,61 @@ export function decodeTrace(arrayBuffer, sourceKey, expectedLength) {
   const values = new Float32Array(expectedLength);
   for (let index = 0; index < expectedLength; index += 1) {
     values[index] = view.getFloat32(index * Float32Array.BYTES_PER_ELEMENT, true);
+  }
+  return values;
+}
+
+
+/**
+ * Decode the component-row-aligned DF/F denominator vector. Float64 storage
+ * preserves the browser's previous double-precision even-median result.
+ *
+ * @param {ArrayBuffer} arrayBuffer
+ * @param {number} expectedLength
+ */
+export function decodeDffDenominators(arrayBuffer, expectedLength) {
+  const actualLength = arrayBuffer.byteLength / Float64Array.BYTES_PER_ELEMENT;
+  if (!Number.isInteger(actualLength) || actualLength !== expectedLength) {
+    throw new CacheClientError(
+      CacheClientErrorCode.TRACE_SIZE_MISMATCH,
+      `DF/F denominator cache size mismatch: got ${actualLength}, expected ${expectedLength}`,
+    );
+  }
+  if (LITTLE_ENDIAN_HOST) {
+    return new Float64Array(arrayBuffer);
+  }
+  const view = new DataView(arrayBuffer);
+  const values = new Float64Array(expectedLength);
+  for (let index = 0; index < expectedLength; index += 1) {
+    values[index] = view.getFloat64(index * Float64Array.BYTES_PER_ELEMENT, true);
+  }
+  return values;
+}
+
+
+/**
+ * Decode one row-major YX background texture from canonical little-endian
+ * unsigned-16 storage. Value reconstruction remains metadata-owned.
+ *
+ * @param {ArrayBuffer} arrayBuffer
+ * @param {string} backgroundKey
+ * @param {number} expectedLength
+ */
+export function decodeBackground(arrayBuffer, backgroundKey, expectedLength) {
+  const actualLength = arrayBuffer.byteLength / Uint16Array.BYTES_PER_ELEMENT;
+  if (!Number.isInteger(actualLength) || actualLength !== expectedLength) {
+    throw new CacheClientError(
+      CacheClientErrorCode.TRACE_SIZE_MISMATCH,
+      `Background cache size mismatch for ${backgroundKey}: got ${actualLength}, expected ${expectedLength}`,
+    );
+  }
+  if (LITTLE_ENDIAN_HOST) {
+    return new Uint16Array(arrayBuffer);
+  }
+  const view = new DataView(arrayBuffer);
+  const values = new Uint16Array(expectedLength);
+  for (let index = 0; index < expectedLength; index += 1) {
+    values[index] = view.getUint16(index * Uint16Array.BYTES_PER_ELEMENT, true);
   }
   return values;
 }

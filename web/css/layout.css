@@ -4,11 +4,23 @@
   height: 100vh;
 }
 
+.fullscreen-background,
 .fullscreen-map {
   position: absolute;
   inset: 0;
   width: 100vw;
   height: 100vh;
+}
+
+.fullscreen-background {
+  z-index: 0;
+  display: block;
+  background: #000;
+  pointer-events: none;
+}
+
+.fullscreen-map {
+  z-index: 1;
   overscroll-behavior: none;
   touch-action: none;
 }
@@ -120,6 +132,56 @@
   pointer-events: auto;
 }
 
+.workflow-state-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--ui-spacing);
+  min-height: var(--control-height);
+  pointer-events: auto;
+}
+
+.workflow-state-actions[hidden] {
+  display: none;
+}
+
+.mini-btn.workflow-state-action {
+  /* Recreate the standard in-panel clickable surface for these standalone controls. */
+  background:
+    linear-gradient(var(--surface-interactive), var(--surface-interactive)),
+    var(--surface-background);
+  box-shadow: var(--shadow-control);
+}
+
+.mini-btn.workflow-state-action:not(:disabled):hover {
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    linear-gradient(var(--surface-interactive), var(--surface-interactive)),
+    var(--surface-background);
+}
+
+.mini-btn.workflow-state-action:not(:disabled):active {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    linear-gradient(var(--surface-interactive), var(--surface-interactive)),
+    var(--surface-background);
+}
+
+.workflow-state-action.hidden {
+  display: none;
+}
+
+.workflow-state-action:focus-visible {
+  outline: 2px solid var(--accent-mint);
+  outline-offset: 2px;
+}
+
+.workflow-state-action:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 .workflow-panel::-webkit-scrollbar {
   width: 0;
   height: 0;
@@ -205,72 +267,6 @@
 
 .workflow-section.collapsed .workflow-section-body {
   display: none;
-}
-
-.background-card {
-  gap: var(--ui-spacing);
-}
-
-.background-options {
-  display: inline-flex;
-  width: 100%;
-  height: var(--control-height);
-  min-height: var(--control-height);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.background-option {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 100%;
-  padding: 0 var(--space-2);
-  border: 0;
-  border-right: 1px solid rgba(255, 245, 228, 0.14);
-  border-radius: 0;
-  background: var(--surface-interactive);
-  color: var(--text-muted);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--font-size-sm);
-  overflow: hidden;
-  text-overflow: clip;
-  white-space: nowrap;
-}
-
-.background-option:last-child {
-  border-right: 0;
-}
-
-.background-option:hover {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    var(--surface-interactive);
-  color: var(--text);
-}
-
-.background-option:active {
-  background:
-    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
-    var(--surface-interactive);
-}
-
-.background-option.is-active {
-  background: var(--surface-selected);
-  color: var(--text);
-}
-
-.background-option.is-active:hover {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    var(--surface-selected);
-}
-
-.background-option.is-active:active {
-  background:
-    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
-    var(--surface-selected);
 }
 
 .source-panel {

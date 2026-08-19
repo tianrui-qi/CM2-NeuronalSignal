@@ -23,6 +23,7 @@ const commands = createViewerCommands(viewerStore);
 const renderScheduler = createRenderScheduler();
 const plotly = typeof Plotly === "undefined" ? null : Plotly;
 const plotImage = createPlotImageService({ document, window });
+const cacheClient = createCacheClient();
 createControlTooltip({ document, window }).start();
 const background = createBackgroundFeature({
   store: viewerStore,
@@ -64,6 +65,7 @@ const roi = createRoiFeature({
 const temporal = createTemporalFeature({
   store: viewerStore,
   commands,
+  loadTraceSource: cacheClient.loadTraceSource,
   document,
   window,
   plotImage,
@@ -90,6 +92,7 @@ const map = createMapFeature({
   requestAnimationFrame: window.requestAnimationFrame.bind(window),
   background: {
     active: background.active,
+    range: background.range,
   },
   qualityControl: {
     activeFilters: qualityControl.activeFilters,
@@ -126,7 +129,6 @@ const shell = createViewerShell({
   ResizeObserver: window.ResizeObserver,
 });
 
-const cacheClient = createCacheClient();
 const uiStateClient = createUiStateClient();
 /** @type {ReturnType<typeof createUiStateController>} */
 let uiState;

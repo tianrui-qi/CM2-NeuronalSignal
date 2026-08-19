@@ -163,7 +163,7 @@ export function createRoiFeature({
       return;
     }
     boxEditor.open({
-      titleText: "ROI Box",
+      titleText: `${roi.name} Box`,
       initialBox: roi.box,
       onApply(box) {
         commands.setRoiBox(roi.id, box);

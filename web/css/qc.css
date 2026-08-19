@@ -12,6 +12,10 @@
   padding-bottom: var(--ui-spacing);
 }
 
+.qc-card.is-empty .qc-histogram-stage {
+  display: none;
+}
+
 .qc-controls {
   width: 100%;
 }

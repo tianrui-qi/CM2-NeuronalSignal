@@ -110,6 +110,7 @@ export function createControlTooltip({ document, window }) {
 
   function moveTooltipToBody() {
     const element = ensureTooltip();
+    element.parentElement?.classList.remove("control-tooltip-host");
     if (element.parentElement !== document.body) {
       document.body.appendChild(element);
     }
@@ -145,6 +146,22 @@ export function createControlTooltip({ document, window }) {
     const top = below + tooltipRect.height <= viewportHeight - VIEWPORT_PADDING_PX
       ? below
       : Math.max(VIEWPORT_PADDING_PX, above);
+    const hostDialog = element.parentElement?.matches("dialog[open]")
+      ? /** @type {HTMLDialogElement} */ (element.parentElement)
+      : null;
+    if (hostDialog) {
+      const hostRect = hostDialog.getBoundingClientRect();
+      const hostStyle = window.getComputedStyle(hostDialog);
+      const hostBorderLeft = Number.parseFloat(hostStyle.borderLeftWidth) || 0;
+      const hostBorderTop = Number.parseFloat(hostStyle.borderTopWidth) || 0;
+      element.style.left = `${Math.round(
+        left - hostRect.left - hostBorderLeft,
+      )}px`;
+      element.style.top = `${Math.round(
+        top - hostRect.top - hostBorderTop,
+      )}px`;
+      return;
+    }
     element.style.left = `${Math.round(left)}px`;
     element.style.top = `${Math.round(top)}px`;
   }
@@ -164,8 +181,10 @@ export function createControlTooltip({ document, window }) {
     const openDialog = control.closest("dialog[open]");
     const host = openDialog ?? document.body;
     if (element.parentElement !== host) {
+      element.parentElement?.classList.remove("control-tooltip-host");
       host.appendChild(element);
     }
+    openDialog?.classList.add("control-tooltip-host");
     element.textContent = description;
     element.hidden = false;
     linkDescription(control);

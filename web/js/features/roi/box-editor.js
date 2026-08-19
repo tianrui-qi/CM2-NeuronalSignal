@@ -1,5 +1,7 @@
 import { normalizeRoiBox } from "./model.js";
 
+let roiBoxEditorSequence = 0;
+
 
 /**
  * DOM-only owner for the existing ROI box form. State transitions and render
@@ -16,8 +18,33 @@ export function createRoiBoxEditor({
   FormData: FormDataConstructor = globalThis.FormData,
   setStatus = () => {},
 }) {
-  function close() {
-    document.querySelector(".roi-box-editor-backdrop")?.remove();
+  /** @type {null | {
+   *   dialog: HTMLDialogElement,
+   *   trigger: HTMLElement | null,
+   *   triggerLabel: string | null,
+   * }} */
+  let active = null;
+
+  /** @param {{ restoreFocus?: boolean }} [options] */
+  function close({ restoreFocus = true } = {}) {
+    if (!active) {
+      return false;
+    }
+    const { dialog, trigger, triggerLabel } = active;
+    active = null;
+    if (dialog.open) {
+      dialog.close();
+    }
+    dialog.remove();
+    if (restoreFocus) {
+      const focusTarget = trigger?.isConnected
+        ? trigger
+        : Array.from(document.querySelectorAll("button")).find(
+          (button) => button.getAttribute("aria-label") === triggerLabel,
+        );
+      focusTarget?.focus();
+    }
+    return true;
   }
 
   /**
@@ -34,16 +61,26 @@ export function createRoiBoxEditor({
     onApply,
     onClear = null,
   }) {
-    close();
+    close({ restoreFocus: false });
 
-    const backdrop = document.createElement("div");
-    backdrop.className = "roi-box-editor-backdrop";
+    roiBoxEditorSequence += 1;
+    const titleId = `roi-box-editor-title-${roiBoxEditorSequence}`;
+    const descriptionId = `roi-box-editor-description-${roiBoxEditorSequence}`;
+    const trigger = typeof document.activeElement?.focus === "function"
+      ? /** @type {HTMLElement} */ (document.activeElement)
+      : null;
 
-    const panel = document.createElement("form");
-    panel.className = "roi-box-editor";
-    panel.addEventListener("submit", (event) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "confirmation-dialog roi-box-editor";
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", titleId);
+    dialog.setAttribute("aria-describedby", descriptionId);
+
+    const form = document.createElement("form");
+    form.className = "roi-box-editor-form";
+    form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const formData = new FormDataConstructor(panel);
+      const formData = new FormDataConstructor(form);
       const box = normalizeRoiBox({
         x: formData.get("x"),
         y: formData.get("y"),
@@ -59,33 +96,32 @@ export function createRoiBoxEditor({
       setStatus("");
     });
 
-    const header = document.createElement("div");
-    header.className = "roi-box-editor-header";
-
     const title = document.createElement("h4");
+    title.id = titleId;
+    title.className = "confirmation-dialog-title roi-box-editor-title";
     title.textContent = titleText;
-    header.appendChild(title);
 
-    const closeButton = document.createElement("button");
-    closeButton.type = "button";
-    closeButton.className = "roi-box-editor-icon";
-    closeButton.textContent = "×";
-    closeButton.setAttribute("aria-label", `Close ${titleText}`);
-    closeButton.dataset.controlDescription = (
-      "Close without applying changes"
+    const description = document.createElement("p");
+    description.id = descriptionId;
+    description.className = (
+      "confirmation-dialog-description roi-box-editor-description"
     );
-    closeButton.addEventListener("click", close);
-    header.appendChild(closeButton);
+    description.textContent = onClear
+      ? (
+        "Set the box bounds in image pixels. "
+        + "Saving removes any selected neurons outside the box."
+      )
+      : "Set the box bounds in image pixels.";
 
     const grid = document.createElement("div");
     grid.className = "roi-box-grid";
     const fields = [
-      ["x", "X", "Box left edge in image pixels"],
-      ["y", "Y", "Box top edge in image pixels"],
-      ["width", "Width", "Box width in image pixels"],
-      ["height", "Height", "Box height in image pixels"],
+      ["x", "X", "Set the box left edge in image pixels"],
+      ["y", "Y", "Set the box top edge in image pixels"],
+      ["width", "Width", "Set the box width in image pixels"],
+      ["height", "Height", "Set the box height in image pixels"],
     ];
-    for (const [key, labelText, description] of fields) {
+    for (const [key, labelText, fieldDescription] of fields) {
       const label = document.createElement("label");
       label.className = "roi-box-field";
       label.textContent = labelText;
@@ -95,7 +131,7 @@ export function createRoiBoxEditor({
       input.name = key;
       input.step = "any";
       input.required = true;
-      input.dataset.controlDescription = description;
+      input.dataset.controlDescription = fieldDescription;
       if (key === "width" || key === "height") {
         input.min = "0.000001";
       } else {
@@ -109,15 +145,23 @@ export function createRoiBoxEditor({
     }
 
     const actions = document.createElement("div");
-    actions.className = "roi-box-actions";
+    actions.className = "confirmation-dialog-actions roi-box-actions";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "mini-btn roi-box-cancel";
+    cancelButton.textContent = "Cancel";
+    cancelButton.setAttribute("aria-label", `Cancel ${titleText}`);
+    cancelButton.dataset.controlDescription = "Close this dialog without saving changes";
+    cancelButton.addEventListener("click", () => close());
 
     const applyButton = document.createElement("button");
     applyButton.type = "submit";
-    applyButton.className = "mini-btn";
-    applyButton.textContent = "Apply";
-    applyButton.setAttribute("aria-label", `Apply ${titleText}`);
+    applyButton.className = "mini-btn roi-box-save";
+    applyButton.textContent = "Save";
+    applyButton.setAttribute("aria-label", `Save ${titleText}`);
     applyButton.dataset.controlDescription = onClear
-      ? "Apply this box and remove selected neurons outside it"
+      ? "Save the box and remove any selected neurons outside it"
       : "Create the ROI with this box";
 
     if (onClear) {
@@ -127,7 +171,7 @@ export function createRoiBoxEditor({
       clearButton.textContent = "Clear";
       clearButton.setAttribute("aria-label", `Clear ${titleText}`);
       clearButton.dataset.controlDescription = (
-        "Remove this box; keep the ROI and its selected neurons"
+        "Remove the box; keep the ROI and its selected neurons"
       );
       clearButton.addEventListener("click", () => {
         onClear();
@@ -136,18 +180,44 @@ export function createRoiBoxEditor({
       });
       actions.appendChild(clearButton);
     }
+    actions.appendChild(cancelButton);
     actions.appendChild(applyButton);
-    panel.appendChild(header);
-    panel.appendChild(grid);
-    panel.appendChild(actions);
-    backdrop.appendChild(panel);
-    backdrop.addEventListener("click", (event) => {
-      if (event.target === backdrop) {
+
+    form.appendChild(title);
+    form.appendChild(description);
+    form.appendChild(grid);
+    form.appendChild(actions);
+    dialog.appendChild(form);
+
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      close();
+    });
+    dialog.addEventListener("click", (event) => {
+      if (event.target !== dialog) {
+        return;
+      }
+      const bounds = dialog.getBoundingClientRect();
+      const clickedBackdrop = (
+        event.clientX < bounds.left
+        || event.clientX > bounds.right
+        || event.clientY < bounds.top
+        || event.clientY > bounds.bottom
+      );
+      if (clickedBackdrop) {
         close();
       }
     });
-    document.body.appendChild(backdrop);
-    panel.querySelector("input")?.focus();
+
+    document.body.appendChild(dialog);
+    active = {
+      dialog,
+      trigger,
+      triggerLabel: trigger?.getAttribute("aria-label") ?? null,
+    };
+    dialog.showModal();
+    form.querySelector("input")?.focus();
+    return true;
   }
 
   return Object.freeze({ close, open });

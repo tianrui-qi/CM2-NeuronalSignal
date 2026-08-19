@@ -19,8 +19,11 @@ from ..cnmfe.traces import trace_sources
 from .background_cache import write_background_cache
 from .contract import (
     BACKGROUND_DIRNAME,
+    DFF_DENOMINATOR_DTYPE,
+    DFF_DENOMINATOR_FILE_NAME,
     METADATA_FILE_NAME,
     POINTS_FILE_NAME,
+    TEMPORAL_DIRNAME,
     TRACE_SOURCE_FILES,
 )
 from .contract.spec import (
@@ -41,8 +44,7 @@ from .contract.spec import (
 )
 from .dff_cache import (
     DFF_MIN_BASELINE_ABS,
-    YBG_PROJECTION_SOURCE_KEY,
-    write_ybg_projection_trace_cache,
+    write_dff_denominator_cache,
 )
 from .points import build_points_payload, write_points
 from .publisher import publish_cache_directory
@@ -79,6 +81,7 @@ def build_cache(
 
     def build_staged_cache(staging_root: Path) -> None:
         (staging_root / BACKGROUND_DIRNAME).mkdir(parents=True)
+        (staging_root / TEMPORAL_DIRNAME).mkdir()
 
         ensure_component_quality_metrics(cnm, mmap_path)
         rows, metric_keys = metric_rows_from_model(cnm=cnm)
@@ -90,7 +93,7 @@ def build_cache(
                 traces,
                 expected_shape=(n_components, n_frames),
             )
-        write_ybg_projection_trace_cache(
+        write_dff_denominator_cache(
             cnm=cnm,
             mmap_load_path=mmap_path,
             cache_save_fold=staging_root,
@@ -129,13 +132,10 @@ def build_cache(
                     "file": TRACE_SOURCE_FILES["c_plus_yra"],
                     "dtype": TRACE_DTYPE,
                 },
-                YBG_PROJECTION_SOURCE_KEY: {
-                    "file": TRACE_SOURCE_FILES[YBG_PROJECTION_SOURCE_KEY],
-                    "dtype": TRACE_DTYPE,
-                },
             },
             "dff": {
-                "projection_source": YBG_PROJECTION_SOURCE_KEY,
+                "denominator_file": DFF_DENOMINATOR_FILE_NAME,
+                "dtype": DFF_DENOMINATOR_DTYPE,
                 "baseline_method": "median",
                 "min_baseline_abs": float(DFF_MIN_BASELINE_ABS),
             },

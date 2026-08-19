@@ -12,7 +12,11 @@ import { selectRoiById } from "./selectors.js";
 export function createViewerCommands(store) {
   return {
     /**
-     * @param {{ meta: any, points: any, tracesBySource: Record<string, Float32Array> }} cache
+     * @param {{
+     *   meta: any,
+     *   points: any,
+     *   dffDenominators: Float64Array,
+     * }} cache
      */
     hydrateCache(cache) {
       return store.update("cache:hydrate", (state) => {
@@ -21,8 +25,8 @@ export function createViewerCommands(store) {
         state.pointIndexByNeuronId = new Map(
           state.points.id.map((id, index) => [id, index]),
         );
-        state.tracesBySource = cache.tracesBySource;
-        state.dffDenominatorCache.clear();
+        state.tracesBySource = {};
+        state.dffDenominators = cache.dffDenominators;
         return state;
       });
     },
@@ -34,6 +38,7 @@ export function createViewerCommands(store) {
       return store.update("roi:replace-persisted-state", (state) => {
         state.rois = nextState.rois;
         state.activeRoiId = nextState.activeRoiId;
+        state.traceHoverNeuronId = null;
         return nextState;
       });
     },
@@ -159,11 +164,14 @@ export function createViewerCommands(store) {
       });
     },
 
-    /** @param {string} cacheKey @param {number} denominator */
-    setDffDenominator(cacheKey, denominator) {
-      return store.update("temporal:cache-dff-denominator", (state) => {
-        state.dffDenominatorCache.set(cacheKey, denominator);
-        return denominator;
+    /** @param {string} sourceKey @param {Float32Array} traces */
+    setTraceSource(sourceKey, traces) {
+      return store.update("temporal:set-trace-source", (state) => {
+        state.tracesBySource = {
+          ...state.tracesBySource,
+          [sourceKey]: traces,
+        };
+        return traces;
       });
     },
 
@@ -250,6 +258,50 @@ export function createViewerCommands(store) {
           return false;
         }
         state.activeBackgroundKey = backgroundKey;
+        return true;
+      });
+    },
+
+    /**
+     * @param {{
+     *   activeBackgroundKey: string | null,
+     *   backgroundRanges: Record<string, { lower: number, upper: number }>,
+     * }} nextState
+     */
+    replaceBackgroundPersistedState(nextState) {
+      return store.update("background:replace-persisted-state", (state) => {
+        state.activeBackgroundKey = nextState.activeBackgroundKey;
+        state.backgroundRanges = nextState.backgroundRanges;
+        return nextState;
+      });
+    },
+
+    /**
+     * @param {string} backgroundKey
+     * @param {{ lower: number, upper: number } | null} range
+     */
+    setBackgroundRange(backgroundKey, range) {
+      return store.update("background:set-range", (state) => {
+        const current = state.backgroundRanges?.[backgroundKey];
+        if (range === null) {
+          if (!Object.hasOwn(state.backgroundRanges ?? {}, backgroundKey)) {
+            return false;
+          }
+          const nextRanges = { ...state.backgroundRanges };
+          delete nextRanges[backgroundKey];
+          state.backgroundRanges = nextRanges;
+          return true;
+        }
+        if (
+          current?.lower === range.lower
+          && current?.upper === range.upper
+        ) {
+          return false;
+        }
+        state.backgroundRanges = {
+          ...state.backgroundRanges,
+          [backgroundKey]: range,
+        };
         return true;
       });
     },
@@ -357,6 +409,7 @@ export function createViewerCommands(store) {
       return store.update("region:replace-persisted-state", (state) => {
         state.regionPolygons = regionPolygons;
         state.regionDraft = { active: false, points: [], polygons: [] };
+        state.regionPreview = null;
         return regionPolygons;
       });
     },

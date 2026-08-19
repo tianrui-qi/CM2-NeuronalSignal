@@ -15,6 +15,7 @@ export class CacheClientError extends Error {
 export const UiStateClientErrorCode = Object.freeze({
   LOAD_HTTP: "UI_STATE_LOAD_HTTP",
   SAVE_HTTP: "UI_STATE_SAVE_HTTP",
+  STALE_WRITER: "UI_STATE_STALE_WRITER",
 });
 
 export class UiStateClientError extends Error {

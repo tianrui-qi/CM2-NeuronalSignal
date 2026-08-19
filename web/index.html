@@ -8,18 +8,39 @@
 </head>
 <body>
   <div class="app-shell">
+    <canvas id="map-background" class="fullscreen-background" aria-hidden="true"></canvas>
     <div id="map-plot" class="fullscreen-map"></div>
-    <div id="status-banner" class="status-banner">Loading cache...</div>
+    <div id="status-banner" class="status-banner" role="status" aria-live="polite" aria-atomic="true">Loading cache...</div>
 
     <aside class="overlay-stack">
       <div id="workflow-panel" class="workflow-panel">
         <div class="workflow-panel-content">
-        <section class="glass-panel workflow-section" data-workflow-section="background">
+        <section id="background-section" class="glass-panel workflow-section" data-workflow-section="background">
           <button class="workflow-section-header" type="button" data-section-toggle="background" data-control-description="Show or hide background controls">
             <span>Background</span>
           </button>
           <div class="workflow-section-body background-card">
-            <div id="background-options" class="background-options" role="group" aria-label="Background"></div>
+            <div class="background-toolbar-row">
+              <div id="background-picker" class="background-picker">
+                <button id="background-select" class="background-select" type="button" aria-haspopup="listbox" aria-controls="background-menu" aria-expanded="false" data-control-description="Choose the image shown behind the neuron map">
+                  <span id="background-select-label" class="background-select-label"></span>
+                </button>
+                <div id="background-menu" class="background-menu anchored-popover floating-surface hidden" role="listbox" aria-label="Background image" aria-orientation="vertical"></div>
+              </div>
+              <div id="background-range" class="background-range hidden">
+                <div class="background-range-values" aria-hidden="true">
+                  <span id="background-range-lower-label"></span>
+                  <span id="background-range-center-label">Color Map</span>
+                  <span id="background-range-upper-label"></span>
+                </div>
+                <div class="background-range-slider" role="group" aria-label="Background Color Map range">
+                  <div class="background-range-track"></div>
+                  <div id="background-range-fill" class="background-range-fill"></div>
+                  <input id="background-range-lower-input" class="background-range-input background-range-input-lower" type="range" aria-label="Minimum background Color Map value" aria-keyshortcuts="Enter">
+                  <input id="background-range-upper-input" class="background-range-input background-range-input-upper" type="range" aria-label="Maximum background Color Map value" aria-keyshortcuts="Enter">
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -149,6 +170,10 @@
             </section>
           </div>
         </section>
+        <div id="workflow-state-actions" class="workflow-state-actions" role="group" aria-label="Viewer state actions" aria-hidden="true" hidden inert>
+          <button id="clear-all-btn" class="mini-btn workflow-state-action" type="button" data-control-description="Reset all viewer settings and selections to a clean state">Clear All</button>
+          <button id="restore-default-btn" class="mini-btn workflow-state-action hidden" type="button" aria-hidden="true" data-control-description="Replace all viewer settings and selections with the configured Default Profile">Restore Default</button>
+        </div>
         </div>
       </div>
 

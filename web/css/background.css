@@ -1,0 +1,278 @@
+.background-card {
+  gap: var(--ui-spacing);
+}
+
+.background-toolbar-row {
+  display: grid;
+  grid-template-columns: var(--plot-action-column-width) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ui-spacing);
+  width: 100%;
+  min-height: var(--control-height);
+}
+
+.background-picker {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.background-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius);
+  background: var(--surface-interactive);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.background-select::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--text-muted);
+  transform: translateY(-40%);
+}
+
+.background-select:hover {
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    var(--surface-interactive);
+}
+
+.background-select:active {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    var(--surface-interactive);
+}
+
+.background-select:focus-visible {
+  outline: 2px solid var(--accent-mint);
+  outline-offset: 1px;
+}
+
+.background-select-label {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-menu {
+  right: auto;
+  left: 0;
+  display: grid;
+  align-content: start;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: max(160px, 100%);
+  max-width: min(240px, calc(100vw - 40px));
+  gap: 0;
+  padding: 4px;
+}
+
+.background-menu.hidden {
+  display: none;
+}
+
+.background-picker-option {
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.background-picker-option:hover,
+.background-picker-option:focus-visible {
+  background: var(--state-hover-layer);
+  outline: none;
+}
+
+.background-picker-option:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-mint);
+}
+
+.background-picker-option:active {
+  background: var(--state-pressed-layer);
+}
+
+.background-picker-option.is-active {
+  background: var(--surface-selected);
+}
+
+.background-picker-option.is-active:hover,
+.background-picker-option.is-active:focus-visible {
+  background:
+    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+    var(--surface-selected);
+}
+
+.background-picker-option.is-active:active {
+  background:
+    linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+    var(--surface-selected);
+}
+
+.background-range {
+  min-width: 0;
+  height: var(--control-height);
+}
+
+.background-range.hidden {
+  display: none;
+}
+
+.background-range-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ui-spacing);
+  height: 12px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 12px;
+}
+
+.background-range-values > :last-child {
+  text-align: right;
+}
+
+#background-range-center-label {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.background-range-slider {
+  position: relative;
+  width: 100%;
+  height: var(--slider-hit-height);
+  touch-action: none;
+}
+
+.background-range-track,
+.background-range-fill {
+  position: absolute;
+  top: calc((var(--slider-hit-height) - var(--slider-track-height)) / 2);
+  height: var(--slider-track-height);
+  border-radius: var(--radius-pill);
+}
+
+.background-range-track {
+  right: 0;
+  left: 0;
+  background: var(--slider-track-rest);
+}
+
+.background-range-fill {
+  background: linear-gradient(90deg, #090807, #f7f1e7);
+}
+
+.background-range-input {
+  --slider-state-ring: transparent;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--slider-hit-height);
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+}
+
+.background-range-input::-webkit-slider-runnable-track {
+  height: var(--slider-hit-height);
+  background: transparent;
+}
+
+.background-range-input::-webkit-slider-thumb {
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  margin-top: calc((var(--slider-hit-height) - var(--slider-thumb-size)) / 2);
+  border: var(--slider-thumb-border-width) solid var(--slider-thumb-border-color);
+  border-radius: var(--radius-pill);
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--slider-thumb-fill);
+  box-shadow: var(--slider-thumb-shadow), 0 0 0 3px var(--slider-state-ring);
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.background-range-input::-moz-range-track {
+  height: var(--slider-hit-height);
+  background: transparent;
+}
+
+.background-range-input::-moz-range-thumb {
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  border: var(--slider-thumb-border-width) solid var(--slider-thumb-border-color);
+  border-radius: var(--radius-pill);
+  background: var(--slider-thumb-fill);
+  box-shadow: var(--slider-thumb-shadow), 0 0 0 3px var(--slider-state-ring);
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.background-range-input:hover {
+  --slider-state-ring: var(--slider-hover-ring);
+}
+
+.background-range-input:active {
+  --slider-state-ring: var(--slider-active-ring);
+}
+
+.background-range-input:focus-visible {
+  --slider-state-ring: var(--slider-focus-ring);
+  outline: none;
+}
+
+.background-range-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.background-range-input:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+}
+
+.background-range-input:disabled::-moz-range-thumb {
+  cursor: not-allowed;
+}
+
+.background-range-input-lower {
+  z-index: 2;
+}
+
+.background-range-input-upper {
+  z-index: 3;
+}
+
+.background-range-input:focus,
+.background-range-input:active {
+  z-index: 4;
+}

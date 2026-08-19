@@ -21,3 +21,7 @@
 .control-tooltip[hidden] {
   display: none;
 }
+
+dialog.control-tooltip-host {
+  overflow: visible;
+}

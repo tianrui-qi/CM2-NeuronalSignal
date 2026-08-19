@@ -1,4 +1,6 @@
-/data/
+/data/*
+!/data/serve/
+!/data/serve/**
 
 # temp folder and files
 **/temp/

@@ -1,5 +1,7 @@
 web_dir: web/
 cache_load_fold: data/cache/Y-corr85-pnr12/
+serve_path: data/serve/Y-corr85-pnr12.json
+edit_default: false
 host: 127.0.0.1
 port: 8765
 debug: false

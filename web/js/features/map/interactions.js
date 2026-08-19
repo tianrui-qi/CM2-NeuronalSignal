@@ -234,6 +234,7 @@ export function pinchZoomFactor(accumulatedDeltaY) {
  *     anchor: { x: number, y: number },
  *   }) => unknown,
  *   hideNeuronPreview: () => unknown,
+ *   syncBackgroundView: () => unknown,
  * }} MapInteractionPorts
  */
 
@@ -254,6 +255,19 @@ export function createMapInteractionController({ requestAnimationFrame, plotly }
   let pendingPinchY = 0;
   let pendingPinchClientX = 0;
   let pendingPinchClientY = 0;
+  let backgroundFramePending = false;
+
+  /** @param {MapInteractionPorts} ports */
+  function requestBackgroundSync(ports) {
+    if (backgroundFramePending) {
+      return;
+    }
+    backgroundFramePending = true;
+    requestAnimationFrame(() => {
+      backgroundFramePending = false;
+      ports.syncBackgroundView();
+    });
+  }
 
   /** @param {HTMLElement & { _fullLayout?: Record<string, any> }} plot */
   function flushTrackpadGesture(plot) {
@@ -393,6 +407,10 @@ export function createMapInteractionController({ requestAnimationFrame, plotly }
     plot.on("plotly_relayout", () => {
       ports.hideNeuronPreview();
       requestAnimationFrame(ports.rememberViewRange);
+    });
+    plot.on("plotly_relayouting", () => {
+      ports.hideNeuronPreview();
+      requestBackgroundSync(ports);
     });
     plot.on("plotly_hover", (event) => {
       handleNeuronHover(event, plot, ports);

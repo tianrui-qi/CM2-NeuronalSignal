@@ -10,8 +10,6 @@ export const TRACE_VALUE_MODE_UI_LABELS = Object.freeze({
   dff: "ΔF/F",
 });
 
-export const DFF_PROJECTION_SOURCE_KEY = "ybg_projection";
-
 export const TRACE_EFFECTIVE_SOURCES = Object.freeze({
   df: Object.freeze({
     c_bl: "c_bl",
@@ -27,7 +25,7 @@ export const TRACE_EFFECTIVE_SOURCES = Object.freeze({
  * @type {Readonly<Record<string, Readonly<{
  *   baseSource: string,
  *   subtractMetric?: string,
- *   dffProjectionSource?: string,
+ *   usesDffDenominator?: boolean,
  * }>>>}
  */
 export const TRACE_VIRTUAL_SOURCES = Object.freeze({
@@ -36,12 +34,12 @@ export const TRACE_VIRTUAL_SOURCES = Object.freeze({
   dff_c_bl: Object.freeze({
     baseSource: "c",
     subtractMetric: "bl",
-    dffProjectionSource: DFF_PROJECTION_SOURCE_KEY,
+    usesDffDenominator: true,
   }),
   dff_c_bl_plus_yra: Object.freeze({
     baseSource: "c_plus_yra",
     subtractMetric: "bl",
-    dffProjectionSource: DFF_PROJECTION_SOURCE_KEY,
+    usesDffDenominator: true,
   }),
 });
 
@@ -125,41 +123,52 @@ export function getTraceBaseSourceKey(sourceKey) {
 export function isDynamicDffSource(sourceKey) {
   return Boolean(
     TRACE_VIRTUAL_SOURCES[/** @type {keyof typeof TRACE_VIRTUAL_SOURCES} */ (sourceKey)]
-      ?.dffProjectionSource,
+      ?.usesDffDenominator,
   );
 }
 
 
 /**
- * Virtual DF requires its base trace
- * and baseline metric; dynamic DF/F additionally requires the projection.
+ * Availability is metadata-owned so lazy physical buffers do not remove an
+ * otherwise valid Source or Mode control while it is still loading.
  *
  * @param {Record<string, any>} state
  * @param {string} sourceKey
  */
 export function isTraceSourceAvailable(state, sourceKey) {
-  if (state.meta?.trace_sources?.[sourceKey] && state.tracesBySource?.[sourceKey]) {
+  if (state.meta?.trace_sources?.[sourceKey]) {
     return true;
   }
   const virtual = TRACE_VIRTUAL_SOURCES[
     /** @type {keyof typeof TRACE_VIRTUAL_SOURCES} */ (sourceKey)
   ];
-  if (virtual?.dffProjectionSource) {
-    return Boolean(
-      state.meta?.trace_sources?.[virtual.baseSource]
-      && state.tracesBySource?.[virtual.baseSource]
-      && state.meta?.trace_sources?.[virtual.dffProjectionSource]
-      && state.tracesBySource?.[virtual.dffProjectionSource]
-      && (!virtual.subtractMetric || Array.isArray(state.points?.metrics?.[virtual.subtractMetric]))
-    );
-  }
   return Boolean(
     virtual
     && state.meta?.trace_sources?.[virtual.baseSource]
-    && state.tracesBySource?.[virtual.baseSource]
-    && virtual.subtractMetric
-    && Array.isArray(state.points?.metrics?.[virtual.subtractMetric])
+    && (!virtual.subtractMetric || Array.isArray(state.points?.metrics?.[virtual.subtractMetric]))
+    && (!virtual.usesDffDenominator || state.meta?.dff?.denominator_file)
   );
+}
+
+
+/**
+ * Rendering additionally requires the lazy base buffer and, for DF/F, the
+ * row-aligned denominator vector loaded with the core cache.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} sourceKey
+ */
+export function isTraceSourceLoaded(state, sourceKey) {
+  const baseSourceKey = getTraceBaseSourceKey(sourceKey);
+  const traceBuffer = state.tracesBySource?.[baseSourceKey];
+  if (!(traceBuffer instanceof Float32Array)) {
+    return false;
+  }
+  if (!isDynamicDffSource(sourceKey)) {
+    return true;
+  }
+  return state.dffDenominators instanceof Float64Array
+    && state.dffDenominators.length === state.meta?.neuron_count;
 }
 
 
@@ -383,7 +392,11 @@ export function normalizePersistedTemporalState(state, parsed) {
  * @param {number} neuronId
  */
 export function getTraceSlice(state, sourceKey, neuronId) {
-  const traceBuffer = state.tracesBySource[getTraceBaseSourceKey(sourceKey)];
+  const baseSourceKey = getTraceBaseSourceKey(sourceKey);
+  const traceBuffer = state.tracesBySource?.[baseSourceKey];
+  if (!(traceBuffer instanceof Float32Array)) {
+    throw new Error(`Trace source ${baseSourceKey} has not been loaded.`);
+  }
   const pointIndex = resolvePointIndex(state, neuronId, undefined);
   const traceRow = pointIndex === null
     ? null
@@ -426,43 +439,28 @@ export function getDffMinBaselineAbs(state) {
 }
 
 
-/** @param {ArrayLike<number>} trace */
-function traceMedian(trace) {
-  const values = [];
-  for (let index = 0; index < trace.length; index += 1) {
-    const value = trace[index];
-    if (Number.isFinite(value)) {
-      values.push(value);
-    }
-  }
-  values.sort((a, b) => a - b);
-  if (!values.length) {
-    return NaN;
-  }
-  const middle = Math.floor(values.length / 2);
-  return values.length % 2 === 1
-    ? values[middle]
-    : (values[middle - 1] + values[middle]) / 2;
-}
-
-
 /**
- * Compute the projection-trace median used as the dynamic DF/F denominator.
- * Memoization belongs to the Temporal facade; this model never mutates store
- * state or an externally supplied cache.
+ * Read the cache-built median by canonical trace row. The Float64 artifact
+ * preserves the former browser calculation without retaining the full
+ * projected-background trace matrix.
  *
  * @param {Record<string, any>} state
  * @param {string} sourceKey
  * @param {number} neuronId
  */
 export function getDffDenominator(state, sourceKey, neuronId) {
-  const projectionSourceKey = TRACE_VIRTUAL_SOURCES[
-    /** @type {keyof typeof TRACE_VIRTUAL_SOURCES} */ (sourceKey)
-  ]?.dffProjectionSource;
-  if (!projectionSourceKey) {
+  if (!isDynamicDffSource(sourceKey)) {
     return NaN;
   }
-  return traceMedian(getTraceSlice(state, projectionSourceKey, neuronId));
+  const pointIndex = resolvePointIndex(state, neuronId, undefined);
+  const traceRow = pointIndex === null
+    ? null
+    : state.points?.traceRow?.[pointIndex];
+  if (!Number.isInteger(traceRow)) {
+    return NaN;
+  }
+  const denominator = state.dffDenominators?.[traceRow];
+  return typeof denominator === "number" ? denominator : NaN;
 }
 
 
@@ -474,7 +472,6 @@ export function getDffDenominator(state, sourceKey, neuronId) {
  * @param {{
  *   pointIndexForNeuronId?: (neuronId: number) => number | null,
  *   dffDenominator?: number,
- *   getDffDenominator?: (sourceKey: string, neuronId: number) => number,
  * }} [dependencies]
  */
 export function getTraceDisplayValue(
@@ -488,15 +485,9 @@ export function getTraceDisplayValue(
   if (!isDynamicDffSource(sourceKey)) {
     return value;
   }
-  /** @type {number | undefined} */
-  let denominator;
-  if (Object.prototype.hasOwnProperty.call(dependencies, "dffDenominator")) {
-    denominator = dependencies.dffDenominator;
-  } else if (dependencies.getDffDenominator) {
-    denominator = dependencies.getDffDenominator(sourceKey, neuronId);
-  } else {
-    denominator = getDffDenominator(state, sourceKey, neuronId);
-  }
+  const denominator = Object.prototype.hasOwnProperty.call(dependencies, "dffDenominator")
+    ? dependencies.dffDenominator
+    : getDffDenominator(state, sourceKey, neuronId);
   if (
     typeof denominator !== "number"
     || !Number.isFinite(denominator)
@@ -509,40 +500,30 @@ export function getTraceDisplayValue(
 
 
 /**
- * Build a value reader with an invocation-local denominator cache. The cache
- * is not observable and does not mutate the viewer state, so descriptor
- * construction remains deterministic for a fixed state snapshot.
+ * Build one row's value reader. The denominator lookup happens once per row;
+ * there is no projection-trace calculation or mutable memoization.
  *
  * @param {Record<string, any>} state
+ * @param {string} sourceKey
+ * @param {number} neuronId
  * @param {{
  *   pointIndexForNeuronId?: (neuronId: number) => number | null,
- *   getDffDenominator?: (sourceKey: string, neuronId: number) => number,
  * }} dependencies
  */
-function createTraceDisplayValueReader(state, dependencies) {
-  const denominatorByNeuronId = new Map();
-  return /** @type {(sourceKey: string, neuronId: number, rawValue: number) => number} */ ((
+function createTraceDisplayValueReader(state, sourceKey, neuronId, dependencies) {
+  const rowDependencies = isDynamicDffSource(sourceKey)
+    ? {
+        ...dependencies,
+        dffDenominator: getDffDenominator(state, sourceKey, neuronId),
+      }
+    : dependencies;
+  return (rawValue) => getTraceDisplayValue(
+    state,
     sourceKey,
     neuronId,
     rawValue,
-  ) => {
-    if (!isDynamicDffSource(sourceKey)) {
-      return getTraceDisplayValue(state, sourceKey, neuronId, rawValue, dependencies);
-    }
-    const cacheKey = `${sourceKey}:${neuronId}`;
-    if (!denominatorByNeuronId.has(cacheKey)) {
-      denominatorByNeuronId.set(
-        cacheKey,
-        dependencies.getDffDenominator
-          ? dependencies.getDffDenominator(sourceKey, neuronId)
-          : getDffDenominator(state, sourceKey, neuronId),
-      );
-    }
-    return getTraceDisplayValue(state, sourceKey, neuronId, rawValue, {
-      ...dependencies,
-      dffDenominator: denominatorByNeuronId.get(cacheKey),
-    });
-  });
+    rowDependencies,
+  );
 }
 
 
@@ -712,7 +693,6 @@ export function getTracePixelsPerDisplayUnit(state, sourceKey) {
  * @param {readonly number[]} neuronIds
  * @param {{
  *   pointIndexForNeuronId?: (neuronId: number) => number | null,
- *   getDffDenominator?: (sourceKey: string, neuronId: number) => number,
  *   forceDffThresholdGuide?: boolean,
  * }} [dependencies]
  */
@@ -742,12 +722,16 @@ export function buildTracePlotData(state, sourceKey, neuronIds, dependencies = {
   let thresholdLabelY = null;
   const rowStep = getTraceRowStep(state, sourceKey);
   const dffThresholdDisplayValue = getTraceDffThresholdDisplayValue(sourceKey);
-  const displayValue = createTraceDisplayValueReader(state, dependencies);
-
   if (neuronIds.length > 0) {
     neuronCount = neuronIds.length;
     neuronIds.forEach((neuronId, localIndex) => {
       const trace = getTraceSlice(state, sourceKey, neuronId);
+      const displayValue = createTraceDisplayValueReader(
+        state,
+        sourceKey,
+        neuronId,
+        dependencies,
+      );
       const baseline = -(localIndex * rowStep);
       const y = [];
       zeroGuide.x.push(0, nFrames - 1, NaN);
@@ -777,7 +761,7 @@ export function buildTracePlotData(state, sourceKey, neuronIds, dependencies = {
         }
       }
       for (let frameIndex = 0; frameIndex < nFrames; frameIndex += 1) {
-        const yValue = baseline + displayValue(sourceKey, neuronId, trace[frameIndex]);
+        const yValue = baseline + displayValue(trace[frameIndex]);
         y.push(yValue);
         traceMinY = Math.min(traceMinY, yValue);
         traceMaxY = Math.max(traceMaxY, yValue);
@@ -864,7 +848,6 @@ export function buildTracePlotData(state, sourceKey, neuronIds, dependencies = {
  * @param {readonly number[]} domainNeuronIds
  * @param {{
  *   pointIndexForNeuronId?: (neuronId: number) => number | null,
- *   getDffDenominator?: (sourceKey: string, neuronId: number) => number,
  * }} [dependencies]
  */
 export function buildHeatmapData(
@@ -881,12 +864,16 @@ export function buildHeatmapData(
   let visibleMax = -Infinity;
   let domainMin = Infinity;
   let domainMax = -Infinity;
-  const displayValue = createTraceDisplayValueReader(state, dependencies);
-
   for (const neuronId of neuronIds) {
     const trace = getTraceSlice(state, sourceKey, neuronId);
+    const displayValue = createTraceDisplayValueReader(
+      state,
+      sourceKey,
+      neuronId,
+      dependencies,
+    );
     z.push(Array.from(trace, (value) => {
-      const nextValue = displayValue(sourceKey, neuronId, value);
+      const nextValue = displayValue(value);
       if (Number.isFinite(nextValue)) {
         visibleMin = Math.min(visibleMin, nextValue);
         visibleMax = Math.max(visibleMax, nextValue);
@@ -897,8 +884,14 @@ export function buildHeatmapData(
 
   for (const neuronId of domainNeuronIds) {
     const trace = getTraceSlice(state, sourceKey, neuronId);
+    const displayValue = createTraceDisplayValueReader(
+      state,
+      sourceKey,
+      neuronId,
+      dependencies,
+    );
     for (let index = 0; index < trace.length; index += 1) {
-      const nextValue = displayValue(sourceKey, neuronId, trace[index]);
+      const nextValue = displayValue(trace[index]);
       if (Number.isFinite(nextValue)) {
         domainMin = Math.min(domainMin, nextValue);
         domainMax = Math.max(domainMax, nextValue);

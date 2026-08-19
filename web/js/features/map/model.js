@@ -307,33 +307,19 @@ export function buildMapPointTrace(state, pointIndices, markerStyle) {
 /**
  * @param {Record<string, any>} state
  * @param {{
- *   background: { file: string } | null,
  *   viewportWidth: number,
  *   viewportHeight: number,
  * }} options
  */
 export function buildMapLayout(
   state,
-  { background, viewportWidth, viewportHeight },
+  { viewportWidth, viewportHeight },
 ) {
   const { xRange, yRange } = state.mapViewRange ?? computeMapCoverRanges(
     state.meta,
     viewportWidth,
     viewportHeight,
   );
-  const images = background ? [{
-    source: `/cache/${background.file}`,
-    xref: "x",
-    yref: "y",
-    x: 0,
-    y: state.meta.full_height,
-    sizex: state.meta.full_width,
-    sizey: state.meta.full_height,
-    sizing: "stretch",
-    yanchor: "bottom",
-    layer: "below",
-    opacity: 1,
-  }] : [];
   return {
     margin: { l: 0, r: 0, t: 0, b: 0 },
     height: viewportHeight,
@@ -354,9 +340,9 @@ export function buildMapLayout(
       scaleanchor: "x",
       scaleratio: 1,
     },
-    images,
-    paper_bgcolor: "#000",
-    plot_bgcolor: "#000",
+    images: [],
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: "rgba(0,0,0,0)",
     dragmode: "pan",
     hovermode: "closest",
     showlegend: false,

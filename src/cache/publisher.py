@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
+import stat
 from typing import Callable, Iterable
 from uuid import uuid4
 
@@ -41,8 +42,21 @@ def _path_exists(path: Path) -> bool:
 
 def _resolve_target(target: str | Path) -> Path:
     requested = Path(target).expanduser()
-    if requested.is_symlink():
-        raise ValueError(f"Refusing to publish through a symlink target: {requested}")
+    is_junction = getattr(requested, "is_junction", lambda: False)
+    try:
+        target_stat = requested.lstat()
+    except FileNotFoundError:
+        target_stat = None
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    is_reparse_point = bool(
+        target_stat is not None
+        and (
+            getattr(target_stat, "st_file_attributes", 0) & reparse_flag
+            or getattr(target_stat, "st_reparse_tag", 0)
+        )
+    )
+    if requested.is_symlink() or is_junction() or is_reparse_point:
+        raise ValueError(f"Refusing to publish through a link target: {requested}")
     resolved = requested.resolve()
     if resolved.parent == resolved or not resolved.name:
         raise ValueError(f"Refusing to publish a cache at a filesystem root: {resolved}")

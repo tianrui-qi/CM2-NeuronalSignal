@@ -262,6 +262,7 @@ export function createQualityControlFeature({
       histogramData,
       colorRange: currentColorRange,
       resolveReflowRange: resolveCurrentReflowRange,
+      onDownloadButtonsEnabled: panel.setDownloadButtonsEnabled,
       onDownloadEnabled: panel.setDownloadEnabled,
     });
   }
@@ -392,11 +393,11 @@ export function createQualityControlFeature({
     const installed = requireEffects();
     const plot = histogram.getPlot();
     if (!plot || !plot.data?.length || !activeSpec()) {
-      installed.setStatus(
+      const statusToken = installed.setStatus(
         "No quality-control histogram is available to download.",
         true,
       );
-      globalThis.setTimeout(() => installed.setStatus(""), 1800);
+      globalThis.setTimeout(() => installed.clearStatus(statusToken), 1800);
       return;
     }
 
@@ -427,11 +428,11 @@ export function createQualityControlFeature({
     } catch (error) {
       console.error(error);
       const caught = /** @type {any} */ (error);
-      installed.setStatus(
+      const statusToken = installed.setStatus(
         caught?.message ?? `Failed to download ${format.toUpperCase()}.`,
         true,
       );
-      globalThis.setTimeout(() => installed.setStatus(""), 2400);
+      globalThis.setTimeout(() => installed.clearStatus(statusToken), 2400);
     } finally {
       button?.removeAttribute("aria-busy");
       panel.setDownloadEnabled(Boolean(plot.data?.length));

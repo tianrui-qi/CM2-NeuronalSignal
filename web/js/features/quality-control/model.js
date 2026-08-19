@@ -121,16 +121,20 @@ function finiteOrNull(value) {
 }
 
 
-/** @param {{ min: number, max: number }} extent */
-function defaultBlueprintColorRange(extent) {
-  return { lower: extent.min, upper: extent.max };
+/**
+ * @param {readonly unknown[]} values
+ * @param {{ min: number, max: number, span: number }} extent
+ */
+function defaultBlueprintColorRange(values, extent) {
+  const domain = buildMetricFocusDomain(values, extent);
+  return { lower: domain.min, upper: domain.max };
 }
 
 
 /** @param {Record<string, any>} state @param {{ key: string }} spec @param {unknown} range */
 export function normalizeBlueprintColorRange(state, spec, range) {
   const { values, extent } = buildBlueprintMetricValues(state, spec);
-  const fallback = defaultBlueprintColorRange(extent);
+  const fallback = defaultBlueprintColorRange(values, extent);
   const source = /** @type {{ lower?: unknown, upper?: unknown }} */ (
     range && typeof range === "object" ? range : {}
   );

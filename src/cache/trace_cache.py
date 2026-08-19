@@ -30,4 +30,6 @@ def write_trace_cache(
             f"got {trace_values.shape}, expected {tuple(expected_shape)}"
         )
     little_endian_values = np.ascontiguousarray(trace_values, dtype=np.dtype("<f4"))
-    little_endian_values.tofile(root / TRACE_SOURCE_FILES[source_key])
+    output_path = root / TRACE_SOURCE_FILES[source_key]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    little_endian_values.tofile(output_path)

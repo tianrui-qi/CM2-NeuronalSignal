@@ -10,11 +10,11 @@ import tqdm
 from ..cnmfe.cnmf import fitted_traces, residual_traces, spatial_matrix
 from ..cnmfe.ring import COrderMmapRowReader
 from ..mmap import parse_encoded_mmap_name
-from .trace_cache import write_trace_cache
-
-
-DFF_MIN_BASELINE_ABS = np.float32(1e-6)
-YBG_PROJECTION_SOURCE_KEY = "ybg_projection"
+from .contract import (
+    DFF_DENOMINATOR_DTYPE,
+    DFF_DENOMINATOR_FILE_NAME,
+    DFF_MIN_BASELINE_ABS,
+)
 
 
 def _available_memory_bytes() -> int:
@@ -118,7 +118,30 @@ def _background_projection(cnm: Any, mmap_load_path: str | Path) -> np.ndarray:
     return projection
 
 
-def write_ybg_projection_trace_cache(
+def finite_row_medians(projection: np.ndarray) -> np.ndarray:
+    """Return JS-equivalent medians of finite float32 values in each row."""
+
+    values = np.asarray(projection, dtype=np.float32)
+    if values.ndim != 2:
+        raise ValueError(f"DF/F projection must be rank-2: {values.shape}")
+
+    medians = np.full(values.shape[0], np.nan, dtype=np.float64)
+    for row_index, row in enumerate(values):
+        finite = np.asarray(row[np.isfinite(row)], dtype=np.float32)
+        if finite.size == 0:
+            continue
+        finite.sort()
+        middle = int(finite.size // 2)
+        if finite.size % 2:
+            medians[row_index] = float(finite[middle])
+        else:
+            medians[row_index] = (
+                float(finite[middle - 1]) + float(finite[middle])
+            ) / 2.0
+    return medians
+
+
+def write_dff_denominator_cache(
     *,
     cnm: Any,
     mmap_load_path: str | Path,
@@ -126,9 +149,15 @@ def write_ybg_projection_trace_cache(
     expected_shape: tuple[int, int],
 ) -> None:
     background_projection = _background_projection(cnm, mmap_load_path)
-    write_trace_cache(
-        cache_save_fold,
-        YBG_PROJECTION_SOURCE_KEY,
-        background_projection,
-        expected_shape=expected_shape,
+    if background_projection.shape != tuple(expected_shape):
+        raise ValueError(
+            "DF/F projection shape mismatch: "
+            f"got {background_projection.shape}, expected {tuple(expected_shape)}"
+        )
+    denominators = np.ascontiguousarray(
+        finite_row_medians(background_projection),
+        dtype=np.dtype(DFF_DENOMINATOR_DTYPE),
     )
+    output_path = Path(cache_save_fold) / DFF_DENOMINATOR_FILE_NAME
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    denominators.tofile(output_path)

@@ -3,6 +3,7 @@ import {
   buildMapMarkerStyle,
   buildMapPointTrace,
   buildNeuronPreviewMetadata,
+  computeMapCoverRanges,
   isNeuronVisibleOnMap,
   selectCurrentMapViewRange,
   selectVisiblePointIndices,
@@ -12,6 +13,7 @@ import {
   findRoiBoxBorderHit,
   mapEventToDataPoint,
 } from "./interactions.js";
+import { createMapBackgroundLayer } from "./background-layer.js";
 import { createMapNeuronHoverCard } from "./hover-card.js";
 
 
@@ -47,7 +49,10 @@ function buildMapPlotConfig() {
  *     relayout: (plot: HTMLElement, update: Record<string, any>) => Promise<any>,
  *   },
  *   requestAnimationFrame: (callback: FrameRequestCallback) => number,
- *   background: { active: () => { file: string } | null },
+ *   background: {
+ *     active: () => Record<string, any> | null,
+ *     range: () => { lower: number, upper: number } | null,
+ *   },
  *   qualityControl: {
  *     activeFilters: () => any,
  *     pointPassesMetricFilters: (pointIndex: number, filters?: any) => boolean,
@@ -107,6 +112,17 @@ export function createMapFeature({
     plotly,
     requestAnimationFrame,
   });
+  const backgroundCanvas = /** @type {HTMLCanvasElement | null} */ (
+    document.getElementById("map-background")
+  );
+  if (!backgroundCanvas) {
+    throw new Error("Missing Map background canvas.");
+  }
+  const backgroundLayer = createMapBackgroundLayer({
+    canvas: backgroundCanvas,
+    window,
+  });
+  let loadedBackgroundKey = null;
   /** @type {null | { neuronId: number, anchor: { x: number, y: number } }} */
   let activePreview = null;
   const visibilityPorts = {
@@ -149,7 +165,65 @@ export function createMapFeature({
     const range = selectCurrentMapViewRange(getPlot());
     if (range) {
       commands.setMapViewRange(range);
+      renderBackground(range);
     }
+  }
+
+  /**
+   * Draw against the actual Plotly axes when available. During a relayouting
+   * gesture this keeps the GPU underlay aligned without persisting every frame.
+   */
+  function syncBackgroundView() {
+    const range = selectCurrentMapViewRange(getPlot());
+    return renderBackground(range ?? undefined);
+  }
+
+  /**
+   * @param {{ xRange: number[], yRange: number[] }} [viewRange]
+   */
+  function renderBackground(viewRange) {
+    const state = getState();
+    const active = background.active();
+    const displayRange = background.range();
+    if (
+      !state.meta
+      || !active
+      || active.key !== loadedBackgroundKey
+      || !displayRange
+    ) {
+      return false;
+    }
+    const effectiveView = viewRange
+      ?? selectCurrentMapViewRange(getPlot())
+      ?? state.mapViewRange
+      ?? computeMapCoverRanges(state.meta, window.innerWidth, window.innerHeight);
+    return backgroundLayer.render({
+      range: displayRange,
+      xRange: effectiveView.xRange,
+      yRange: effectiveView.yRange,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+  }
+
+  /**
+   * @param {{ spec: Record<string, any>, pixels: Uint16Array }} payload
+   */
+  function setBackgroundImage(payload) {
+    const state = getState();
+    backgroundLayer.setImage({
+      pixels: payload.pixels,
+      spec: payload.spec,
+      width: Number(state.meta.full_width),
+      height: Number(state.meta.full_height),
+    });
+    loadedBackgroundKey = payload.spec.key;
+    return renderBackground();
+  }
+
+  function clearBackground() {
+    loadedBackgroundKey = null;
+    return backgroundLayer.clear();
   }
 
   function clearViewRange() {
@@ -220,6 +294,7 @@ export function createMapFeature({
       toggleNeuron: roi.toggleNeuron,
       showNeuronPreview,
       hideNeuronPreview,
+      syncBackgroundView,
     });
   }
 
@@ -241,7 +316,6 @@ export function createMapFeature({
       plot,
       [pointTrace, ...region.buildMapTraces()],
       buildMapLayout(state, {
-        background: background.active(),
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
       }),
@@ -251,6 +325,7 @@ export function createMapFeature({
         installInteractions(plot);
         commands.setMapPlotReady(true);
       }
+      syncBackgroundView();
     });
   }
 
@@ -258,7 +333,10 @@ export function createMapFeature({
     render,
     eventToDataPoint,
     rememberViewRange,
+    clearBackground,
     clearViewRange,
     refreshHoverPreview,
+    renderBackground,
+    setBackgroundImage,
   });
 }

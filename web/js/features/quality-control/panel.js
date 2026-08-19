@@ -497,14 +497,18 @@ export function createQualityControlPanel({ document }) {
     document.querySelector(".qc-card")?.classList.toggle("is-empty", isEmpty);
   }
 
-  function setDownloadEnabled(enabled) {
-    document.getElementById("qc-download-row")?.classList.toggle("hidden", !enabled);
+  function setDownloadButtonsEnabled(enabled) {
     for (const buttonId of Object.values(QC_PLOT_DOWNLOADS)) {
       const button = /** @type {HTMLButtonElement | null} */ (document.getElementById(buttonId));
       if (button) {
         button.disabled = !enabled;
       }
     }
+  }
+
+  function setDownloadEnabled(enabled) {
+    document.getElementById("qc-download-row")?.classList.toggle("hidden", !enabled);
+    setDownloadButtonsEnabled(enabled);
   }
 
   function getExportRangeLabels() {
@@ -730,6 +734,7 @@ export function createQualityControlPanel({ document }) {
     readColorSliderValues,
     readQcSliderValues,
     setEmpty,
+    setDownloadButtonsEnabled,
     setDownloadEnabled,
     getExportRangeLabels,
     wire,

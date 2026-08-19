@@ -10,6 +10,19 @@ import {
 
 export const UI_STATE_API_PATH = "/api/ui-state";
 
+function buildWriteEndpoint(endpoint, writeEpoch, writeRevision) {
+  if (
+    !Number.isSafeInteger(writeEpoch)
+    || writeEpoch < 1
+    || !Number.isSafeInteger(writeRevision)
+    || writeRevision < 1
+  ) {
+    throw new TypeError("Edit-default writes require a valid epoch and revision.");
+  }
+  const separator = endpoint.includes("?") ? "&" : "?";
+  return `${endpoint}${separator}write_epoch=${writeEpoch}&write_revision=${writeRevision}`;
+}
+
 /**
  * @param {RequestInfo | URL} input
  * @param {RequestInit} [init]
@@ -26,7 +39,7 @@ function defaultSendBeacon() {
 }
 
 /**
- * Create the transport boundary for the existing UI-state endpoint.
+ * Create the transport boundary for the default-profile endpoint.
  * Domain validation and normalization remain caller-owned callbacks.
  *
  * @param {{
@@ -44,14 +57,19 @@ export function createUiStateClient({
 } = {}) {
   return {
     /**
-     * @returns {Promise<unknown | null>}
+     * @returns {Promise<{
+     *   mode: "browser" | "edit_default",
+     *   storageKey: string,
+     *   defaultState: unknown | null,
+     *   writeEpoch: number | null,
+     * }>}
      */
     async load() {
       const response = await fetchImpl(endpoint, { cache: "no-store" });
       if (!response.ok) {
         throw new UiStateClientError(
           UiStateClientErrorCode.LOAD_HTTP,
-          `Failed to load cache cookie state: HTTP ${response.status}`
+          `Failed to load the default viewer profile: HTTP ${response.status}`
         );
       }
       return decodeUiStateEnvelope(await response.json());
@@ -59,17 +77,34 @@ export function createUiStateClient({
 
     /**
      * @param {unknown} payload
-     * @param {{ keepalive?: boolean }} [options]
+     * @param {{
+     *   keepalive?: boolean,
+     *   writeEpoch: number,
+     *   writeRevision: number,
+     * }} options
      * @returns {Promise<void>}
      */
-    async save(payload, { keepalive = false } = {}) {
-      const response = await fetchImpl(endpoint, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: encodeUiState(payload),
-        keepalive,
-      });
+    async save(payload, {
+      keepalive = false,
+      writeEpoch,
+      writeRevision,
+    }) {
+      const response = await fetchImpl(
+        buildWriteEndpoint(endpoint, writeEpoch, writeRevision),
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: encodeUiState(payload),
+          keepalive,
+        },
+      );
       if (!response.ok) {
+        if (response.status === 409) {
+          throw new UiStateClientError(
+            UiStateClientErrorCode.STALE_WRITER,
+            "Another edit-default page now owns this profile."
+          );
+        }
         throw new UiStateClientError(
           UiStateClientErrorCode.SAVE_HTTP,
           `HTTP ${response.status}`
@@ -85,16 +120,20 @@ export function createUiStateClient({
     },
 
     /**
-     * Call only after canSendBeacon() succeeds.
+     * Call only in edit-default mode after canSendBeacon() succeeds.
      *
      * @param {unknown} payload
+     * @param {{ writeEpoch: number, writeRevision: number }} options
      * @returns {boolean}
      */
-    sendBeacon(payload) {
+    sendBeacon(payload, { writeEpoch, writeRevision }) {
       if (typeof sendBeaconImpl !== "function") {
         return false;
       }
-      return sendBeaconImpl(endpoint, createUiStateBlob(payload, BlobCtor));
+      return sendBeaconImpl(
+        buildWriteEndpoint(endpoint, writeEpoch, writeRevision),
+        createUiStateBlob(payload, BlobCtor),
+      );
     },
   };
 }

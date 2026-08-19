@@ -1,5 +1,5 @@
 /**
- * Encode one viewer-state payload for the UI-state HTTP and beacon transports.
+ * Encode one viewer-state payload for HTTP, beacon, and localStorage.
  * The payload is intentionally not cloned before serialization.
  *
  * @param {unknown} payload
@@ -10,16 +10,60 @@ export function encodeUiState(payload) {
 }
 
 /**
- * Unwrap the server response without interpreting the viewer-state domain.
+ * Decode the server-owned startup descriptor without interpreting the viewer
+ * state itself. The application-level UI-state controller remains the strict
+ * domain validator.
  *
  * @param {unknown} payload
- * @returns {unknown | null}
+ * @returns {{
+ *   mode: "browser" | "edit_default",
+ *   storageKey: string,
+ *   defaultState: unknown | null,
+ *   writeEpoch: number | null,
+ * }}
  */
 export function decodeUiStateEnvelope(payload) {
-  if (payload === null || payload === undefined) {
-    return null;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new TypeError("UI-state startup response must be an object.");
   }
-  return /** @type {{ state?: unknown }} */ (Object(payload)).state ?? null;
+  const envelope = /** @type {Record<string, unknown>} */ (payload);
+  if (envelope.ok !== true) {
+    throw new TypeError("UI-state startup response was not successful.");
+  }
+  if (envelope.mode !== "browser" && envelope.mode !== "edit_default") {
+    throw new TypeError("UI-state startup response has an invalid mode.");
+  }
+  if (
+    typeof envelope.storageKey !== "string"
+    || envelope.storageKey.trim().length === 0
+  ) {
+    throw new TypeError("UI-state startup response has no storage key.");
+  }
+  if (
+    envelope.defaultState !== null
+    && (
+      !envelope.defaultState
+      || typeof envelope.defaultState !== "object"
+      || Array.isArray(envelope.defaultState)
+    )
+  ) {
+    throw new TypeError("Default UI state must be an object or null.");
+  }
+  if (
+    (envelope.mode === "browser" && envelope.writeEpoch !== null)
+    || (
+      envelope.mode === "edit_default"
+      && (!Number.isSafeInteger(envelope.writeEpoch) || envelope.writeEpoch < 1)
+    )
+  ) {
+    throw new TypeError("UI-state startup response has an invalid write epoch.");
+  }
+  return {
+    mode: envelope.mode,
+    storageKey: envelope.storageKey,
+    defaultState: envelope.defaultState,
+    writeEpoch: envelope.writeEpoch,
+  };
 }
 
 /**

@@ -9,11 +9,11 @@ const PERSISTED_UI_STATE_KEYS = Object.freeze([
   "traceDffPixelsPerPercent",
   "heatmapRangeBySource",
   "activeBackgroundKey",
+  "backgroundRanges",
   "activeBlueprintMetric",
   "blueprintColorRanges",
   "qcRanges",
   "regionPolygons",
-  "activeWorkflowSection",
   "openSections",
   "overlayWidth",
 ]);
@@ -65,6 +65,18 @@ function isBoundRangeMap(value, nullable) {
     && [range.lower, range.upper].every((bound) => (
       isFiniteNumber(bound) || (nullable && bound === null)
     ))
+  ));
+}
+
+/** @param {unknown} value */
+function isBackgroundRangeMap(value) {
+  return isObject(value) && Object.entries(value).every(([backgroundKey, range]) => (
+    backgroundKey.length > 0
+    && isObject(range)
+    && hasExactKeys(range, ["lower", "upper"])
+    && Number.isSafeInteger(range.lower)
+    && Number.isSafeInteger(range.upper)
+    && range.lower < range.upper
   ));
 }
 
@@ -145,6 +157,7 @@ export function isCanonicalPersistedUiState(value) {
     ))
     && typeof value.activeBackgroundKey === "string"
     && value.activeBackgroundKey.length > 0
+    && isBackgroundRangeMap(value.backgroundRanges)
     && typeof value.activeBlueprintMetric === "string"
     && value.activeBlueprintMetric.length > 0
     && isBoundRangeMap(value.blueprintColorRanges, false)
@@ -160,7 +173,6 @@ export function isCanonicalPersistedUiState(value) {
         && isFiniteNumber(point.y)
       ))
     ))
-    && WORKFLOW_SECTION_KEYS.includes(value.activeWorkflowSection)
     && isObject(value.openSections)
     && hasExactKeys(value.openSections, WORKFLOW_SECTION_KEYS)
     && WORKFLOW_SECTION_KEYS.every((key) => typeof value.openSections[key] === "boolean")
@@ -194,11 +206,11 @@ export function selectPersistedUiState(state) {
     traceDffPixelsPerPercent: state.traceDffPixelsPerPercent,
     heatmapRangeBySource: state.heatmapRangeBySource,
     activeBackgroundKey: state.activeBackgroundKey,
+    backgroundRanges: state.backgroundRanges,
     activeBlueprintMetric: state.activeBlueprintMetric,
     blueprintColorRanges: state.blueprintColorRanges,
     qcRanges: state.qcRanges,
     regionPolygons: state.regionPolygons,
-    activeWorkflowSection: state.activeWorkflowSection,
     openSections: state.openSections,
     overlayWidth: state.overlayWidth,
   };
