@@ -4,8 +4,9 @@
 
 These instructions apply to the whole repository. For `web/**`, also read
 `web/AGENTS.md`; it owns frontend composition, interaction, accessibility,
-and browser verification. This file owns repository safety, pipeline, cache,
-serve, profile, and scientific boundaries.
+and browser verification. For `site/**`, also read `site/AGENTS.md`; it owns
+the Sites deployment adapter. This file owns repository safety, pipeline,
+cache, serve, profile, and scientific boundaries.
 
 CM2 is a calcium-imaging project built around CaImAn CNMF-E. Its four explicit
 terminal stages produce an mmap, a CNMF-E HDF5 model, a browser cache, and a
@@ -169,6 +170,20 @@ writes complete UI changes to `serve_path`. It is loopback-only. Each page load
 claims a writer epoch, and increasing revisions prevent stale PUT/pagehide
 beacon requests from rolling the profile back. Clear/Restore controls are
 ordinary-browser-mode UI only.
+
+## Sites Deployment
+
+`site/` adapts the existing viewer to a read-only Cloudflare Worker surface for
+OpenAI Sites. It copies `web/**`, the validated cache, the tracked Default
+Profile, and the pinned Plotly bundle into a derived deployment build. It does
+not replace or participate in the four terminal pipeline stages.
+
+The deployed API always matches ordinary browser mode: the Default Profile is
+read-only, individual changes remain in browser `localStorage`, and
+`edit_default` writes are unavailable. Deployment-only trace chunks work
+around static-asset size limits but stream the exact canonical bytes at the
+unchanged `/cache/temporal/*.float32` paths. Do not track generated site assets
+or alter the scientific cache layout for hosting convenience.
 
 ## Web Boundary
 

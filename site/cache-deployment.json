@@ -1,0 +1,43 @@
+{
+  "storageKey": "Y-corr85-pnr12",
+  "plotly": {
+    "bytes": 4851164,
+    "sha256": "8ef4c6ab1369f0019611cbcd2d5b8aafef23e5d19ef58c39d4b4249831fe2180"
+  },
+  "cache": {
+    "metadata.json": {
+      "bytes": 2399,
+      "sha256": "8235350ffc5ead23f00a255d3761e0f2332b02cc87fda5ae407e14f11a657206"
+    },
+    "point.json": {
+      "bytes": 1187777,
+      "sha256": "c4b807c574dea947f88ef6d02c8ccfb577241b934078b644131472d763e678dd"
+    },
+    "background/mean.uint16": {
+      "bytes": 19102432,
+      "sha256": "7e03fe96193d93d7a9c34027708e6627a0f7f29902c8bb5be932ae87ed1e2030"
+    },
+    "background/std.uint16": {
+      "bytes": 19102432,
+      "sha256": "d55b4a55a3377d58df781718a42e03e5393122c2271786acae47720f34ef9e00"
+    },
+    "background/bandpass.uint16": {
+      "bytes": 19102432,
+      "sha256": "50d8912dcf2865a708872c9a3a9e0b56f4e88dcc08df526859d7de9450ee4b1c"
+    },
+    "temporal/f.float64": {
+      "bytes": 50304,
+      "sha256": "ae9228a6bebfd90e1146bf76e55af12448ce1677d1a919b8e2ab8c8b57e4b988"
+    },
+    "temporal/c.float32": {
+      "bytes": 44971776,
+      "sha256": "501eeb4fecb19150bb329d21e0712b818bae2a5180c5584d7d99062ae159a3a6",
+      "chunkBytes": 20971520
+    },
+    "temporal/c_plus_yra.float32": {
+      "bytes": 44971776,
+      "sha256": "b8f2eae9e06fb67a3408d6b2f32cf70a7fa332ed060f0ce1f8539dee6a465be5",
+      "chunkBytes": 20971520
+    }
+  }
+}

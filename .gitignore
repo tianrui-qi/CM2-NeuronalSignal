@@ -15,6 +15,12 @@
 /outputs/
 /multirun/
 
+# Sites deployment output
+/site/node_modules/
+/site/public/
+/site/dist/
+/site/.wrangler/
+
 # compile file
 **/.asv
 **/__pycache__/
