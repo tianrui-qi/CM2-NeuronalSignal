@@ -11,9 +11,7 @@ export const REGION_DRAFT_COLOR = "rgba(80,190,230,0.95)";
 /**
  * @typedef {{
  *   addDraftPoint: (point: { x: number, y: number }) => void,
- *   applyDrawing: () => unknown,
- *   cancelDrawing: () => unknown,
- *   closeDraftPolygon: () => unknown,
+ *   finishDrawing: () => unknown,
  *   mapEventToDataPoint: (event: Event) => { x: number, y: number } | null,
  * }} RegionDrawingEffects
  */
@@ -108,30 +106,27 @@ export function buildRegionTraces(
 
 
 /**
- * Own the Region keyboard/pointer listeners for the lifetime of one feature.
- * Re-wiring replaces effect implementations without duplicating listeners or
- * resetting click de-duplication state.
+ * Own Region's fine-pointer drawing listeners for the lifetime of one feature.
+ * Keyboard commands are routed by the application command registry. Re-wiring
+ * replaces effect implementations without duplicating pointer listeners.
  *
  * @param {{
  *   document: Document,
  *   getState: () => Record<string, any>,
- *   now?: () => number,
  * }} dependencies
  */
 export function createRegionDrawingController({
   document,
   getState,
-  now = () => globalThis.performance.now(),
 }) {
   /** @type {RegionDrawingEffects | null} */
   let effects = null;
-  let keyboardWired = false;
   /** @type {HTMLElement | null} */
   let wiredPlot = null;
   let pointerStart = null;
-  let lastDraftClick = null;
+  let clickCandidate = false;
+  let finishCandidate = false;
   const clickDistancePx = 5;
-  const duplicateClickMs = 250;
 
   /** @returns {RegionDrawingEffects} */
   function requireEffects() {
@@ -151,55 +146,13 @@ export function createRegionDrawingController({
   }
 
   /** @param {PointerEvent | MouseEvent} event */
-  function isDuplicateDraftClick(event) {
-    return Boolean(
-      lastDraftClick
-      && now() - lastDraftClick.time < duplicateClickMs
-      && Math.hypot(
-        event.clientX - lastDraftClick.x,
-        event.clientY - lastDraftClick.y,
-      ) <= clickDistancePx
-    );
-  }
-
-  /** @param {PointerEvent | MouseEvent} event */
   function addDraftPointFromEvent(event) {
-    if (isDuplicateDraftClick(event)) {
-      return true;
-    }
     const installed = requireEffects();
     const point = installed.mapEventToDataPoint(event);
     if (!point) {
       return false;
     }
-    lastDraftClick = {
-      time: now(),
-      x: event.clientX,
-      y: event.clientY,
-    };
     installed.addDraftPoint(point);
-    return true;
-  }
-
-  function wireKeyboard() {
-    if (keyboardWired) {
-      return false;
-    }
-    document.addEventListener("keydown", (event) => {
-      const state = getState();
-      const installed = requireEffects();
-      if (event.key === "Escape" && state.regionDraft.active) {
-        installed.cancelDrawing();
-      }
-      if (
-        event.key === "Enter"
-        && state.regionDraft.active
-        && state.regionDraft.points.length >= 3
-      ) {
-        installed.applyDrawing();
-      }
-    });
-    keyboardWired = true;
     return true;
   }
 
@@ -209,9 +162,18 @@ export function createRegionDrawingController({
       return false;
     }
     plot.addEventListener("pointerdown", (event) => {
-      if (!isDraftMapEvent(event) || event.button !== 0) {
+      if (
+        event.pointerType !== "mouse"
+        || !isDraftMapEvent(event)
+        || event.button !== 0
+      ) {
+        pointerStart = null;
+        clickCandidate = false;
+        finishCandidate = false;
         return;
       }
+      clickCandidate = false;
+      finishCandidate = false;
       pointerStart = {
         id: event.pointerId,
         x: event.clientX,
@@ -220,39 +182,54 @@ export function createRegionDrawingController({
     }, true);
 
     plot.addEventListener("pointerup", (event) => {
-      if (!isDraftMapEvent(event) || !pointerStart || pointerStart.id !== event.pointerId) {
+      if (
+        event.pointerType !== "mouse"
+        || !isDraftMapEvent(event)
+        || !pointerStart
+        || pointerStart.id !== event.pointerId
+      ) {
         pointerStart = null;
+        clickCandidate = false;
         return;
       }
       const dx = event.clientX - pointerStart.x;
       const dy = event.clientY - pointerStart.y;
       pointerStart = null;
-      if (Math.hypot(dx, dy) > clickDistancePx) {
-        return;
-      }
-      addDraftPointFromEvent(event);
+      clickCandidate = Math.hypot(dx, dy) <= clickDistancePx;
     }, true);
 
     plot.addEventListener("pointercancel", () => {
       pointerStart = null;
+      clickCandidate = false;
+      finishCandidate = false;
     }, true);
 
     plot.addEventListener("click", (event) => {
       if (!isDraftMapEvent(event)) {
+        clickCandidate = false;
+        finishCandidate = false;
         return;
       }
-      addDraftPointFromEvent(event);
+      const cameFromMousePointer = clickCandidate;
+      const shouldAddPoint = cameFromMousePointer && event.detail === 1;
+      finishCandidate = cameFromMousePointer && event.detail === 2;
+      clickCandidate = false;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (shouldAddPoint) {
+        addDraftPointFromEvent(event);
+      }
     }, true);
 
     plot.addEventListener("dblclick", (event) => {
-      if (!isDraftMapEvent(event)) {
+      if (!isDraftMapEvent(event) || !finishCandidate) {
+        finishCandidate = false;
         return;
       }
+      finishCandidate = false;
       event.preventDefault();
-      event.stopPropagation();
-      requireEffects().closeDraftPolygon();
+      event.stopImmediatePropagation();
+      requireEffects().finishDrawing();
     }, true);
 
     wiredPlot = plot;
@@ -262,14 +239,12 @@ export function createRegionDrawingController({
   /** @param {RegionDrawingEffects} nextEffects */
   function wire(nextEffects) {
     effects = nextEffects;
-    const installedKeyboard = wireKeyboard();
     const plot = /** @type {HTMLElement | null} */ (document.getElementById("map-plot"));
-    const installedPlot = plot ? wirePlot(plot) : false;
-    return installedKeyboard || installedPlot;
+    return plot ? wirePlot(plot) : false;
   }
 
   return {
-    isDraftMapEvent,
+    addPointFromEvent: addDraftPointFromEvent,
     wire,
   };
 }

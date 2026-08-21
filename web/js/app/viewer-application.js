@@ -55,6 +55,12 @@ import { createConfirmationDialog } from "../shared/ui/confirmation-dialog.js";
  *     canRestoreDefault: () => boolean,
  *     sendPendingBeacon: () => void,
  *   },
+ *   interactionCommands: {
+ *     decorateCommandElements: (root?: ParentNode | Element) => number,
+ *     helpEntries: () => Array<{ id: string, label: string, group: string, bindingLabel: string }>,
+ *     register: (command: Record<string, any>) => string,
+ *     start: () => boolean,
+ *   },
  *   document?: Document,
  *   window?: Window,
  *   plotly: any,
@@ -69,6 +75,7 @@ export function createViewerApplication({
   shell,
   cacheClient,
   uiState,
+  interactionCommands,
   document: documentRef = globalThis.document,
   window: windowRef = globalThis.window,
   plotly,
@@ -132,6 +139,315 @@ export function createViewerApplication({
   const regionStatus = createScopedStatusPort();
   const roiStatus = createScopedStatusPort();
   const stateConfirmationDialog = createConfirmationDialog({ document: documentRef });
+  /** @type {"map" | "qualityControl" | "temporal" | null} */
+  let lastInspectorOwner = null;
+  /** @type {HTMLElement | null} */
+  let shortcutHelpTrigger = null;
+  const inspectorOwners = Object.freeze({
+    map: features.map,
+    qualityControl: features.qualityControl,
+    temporal: features.temporal,
+  });
+
+  /** @param {PointerEvent} event */
+  function noteInspectorOwner(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("#c-trace-plot, #c-heatmap-plot, .temporal-inspector")) {
+      lastInspectorOwner = "temporal";
+    } else if (target?.closest("#blueprint-stats-plot, .qc-histogram-inspector")) {
+      lastInspectorOwner = "qualityControl";
+    } else if (target?.closest("#map-plot, .map-neuron-preview")) {
+      lastInspectorOwner = "map";
+    }
+  }
+
+  function dismissPinnedInspector() {
+    const owners = [
+      lastInspectorOwner,
+      "temporal",
+      "qualityControl",
+      "map",
+    ].filter((owner, index, values) => owner && values.indexOf(owner) === index);
+    for (const owner of owners) {
+      const feature = inspectorOwners[owner];
+      if (feature.hasPinnedInspector()) {
+        feature.dismissPinnedInspector();
+        if (lastInspectorOwner === owner) {
+          lastInspectorOwner = null;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function dismissAllPinnedInspectors() {
+    for (const feature of Object.values(inspectorOwners)) {
+      feature.dismissPinnedInspector();
+    }
+    lastInspectorOwner = null;
+  }
+
+  /** @param {string} title @param {Array<{ label: string, binding: string }>} rows */
+  function appendHelpGroup(title, rows) {
+    const container = documentRef.getElementById("shortcut-help-groups");
+    if (!container) {
+      return;
+    }
+    const section = documentRef.createElement("section");
+    const heading = documentRef.createElement("h5");
+    heading.className = "shortcut-help-group-title";
+    heading.textContent = title;
+    const list = documentRef.createElement("dl");
+    list.className = "shortcut-help-list";
+    for (const row of rows) {
+      const label = documentRef.createElement("dt");
+      label.textContent = row.label;
+      const binding = documentRef.createElement("dd");
+      binding.textContent = row.binding;
+      list.append(label, binding);
+    }
+    section.append(heading, list);
+    container.append(section);
+  }
+
+  function renderShortcutHelp() {
+    const container = documentRef.getElementById("shortcut-help-groups");
+    if (!container) {
+      return false;
+    }
+    container.replaceChildren();
+    const grouped = new Map();
+    for (const entry of interactionCommands.helpEntries()) {
+      if (!grouped.has(entry.group)) {
+        grouped.set(entry.group, []);
+      }
+      grouped.get(entry.group).push({
+        label: entry.label,
+        binding: entry.bindingLabel,
+      });
+    }
+    for (const [group, rows] of grouped) {
+      appendHelpGroup(group, rows);
+    }
+    appendHelpGroup("Touch and Pointer", [
+      { label: "Pan the neuron map", binding: "One-finger drag" },
+      { label: "Zoom and pan the neuron map", binding: "Two-finger pinch" },
+      { label: "Inspect a neuron", binding: "Tap neuron" },
+      { label: "Select or deselect the inspected neuron", binding: "Double-tap the same neuron" },
+      { label: "Activate an ROI", binding: "Tap ROI border" },
+      { label: "Close a fixed Map inspector", binding: "Tap another Map target" },
+      { label: "Add a Region vertex", binding: "Tap map while drawing" },
+      { label: "Inspect Histogram or Heatmap", binding: "Tap plot" },
+      { label: "Show a Trace deselect action", binding: "Tap trace" },
+    ]);
+    return true;
+  }
+
+  function closeShortcutHelp() {
+    const dialog = /** @type {HTMLDialogElement | null} */ (
+      documentRef.getElementById("shortcut-help-dialog")
+    );
+    if (!dialog?.open) {
+      return false;
+    }
+    dialog.close();
+    if (shortcutHelpTrigger?.isConnected) {
+      shortcutHelpTrigger.focus();
+    }
+    shortcutHelpTrigger = null;
+    return true;
+  }
+
+  /** @param {HTMLElement | null} trigger */
+  function openShortcutHelp(trigger) {
+    const dialog = /** @type {HTMLDialogElement | null} */ (
+      documentRef.getElementById("shortcut-help-dialog")
+    );
+    if (!dialog) {
+      return false;
+    }
+    shortcutHelpTrigger = trigger;
+    renderShortcutHelp();
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+    documentRef.getElementById("shortcut-help-close-btn")?.focus();
+    return true;
+  }
+
+  function registerInteractionCommands() {
+    const canUseMap = () => Boolean(getState().mapPlotReady);
+    for (const entry of [
+      {
+        id: "native-activate",
+        label: "Activate a focused button or section header",
+        bindings: ["Enter", "Space"],
+        bindingLabel: "Enter / Space",
+      },
+      {
+        id: "native-picker",
+        label: "Navigate and choose from an open picker",
+        bindings: ["ArrowDown", "ArrowUp", "Home", "End", "Enter", "Space", "Escape"],
+        bindingLabel: "Arrow keys / Home / End / Enter / Space / Escape",
+      },
+      {
+        id: "native-range",
+        label: "Adjust a focused range endpoint",
+        bindings: ["ArrowLeft", "ArrowRight", "PageDown", "PageUp", "Home", "End"],
+        bindingLabel: "Arrow keys / Page Up or Down / Home / End",
+      },
+      {
+        id: "native-dialog",
+        label: "Move within or cancel a dialog",
+        bindings: ["Tab", "Shift+Tab", "Escape"],
+        bindingLabel: "Tab / Shift+Tab / Escape",
+      },
+    ]) {
+      interactionCommands.register({
+        ...entry,
+        contexts: [],
+        group: "Controls",
+        execute: () => {},
+      });
+    }
+    interactionCommands.register({
+      id: "show-help",
+      label: "Show keyboard and gesture help",
+      contexts: ["global"],
+      bindings: ["?"],
+      group: "Global",
+      execute: () => openShortcutHelp(documentRef.activeElement),
+    });
+    interactionCommands.register({
+      id: "map-pan",
+      label: "Pan map; hold Shift for a larger step",
+      contexts: ["map"],
+      bindings: [
+        "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+        "Shift+ArrowLeft", "Shift+ArrowRight", "Shift+ArrowUp", "Shift+ArrowDown",
+      ],
+      bindingLabel: "Arrow keys / Shift+Arrow keys",
+      group: "Map",
+      allowRepeat: true,
+      canExecute: canUseMap,
+      execute: (event) => {
+        const step = event.shiftKey ? 120 : 40;
+        const deltas = {
+          ArrowLeft: [-step, 0],
+          ArrowRight: [step, 0],
+          ArrowUp: [0, -step],
+          ArrowDown: [0, step],
+        };
+        features.map.panByScreen(...deltas[event.key]);
+      },
+    });
+    interactionCommands.register({
+      id: "map-zoom-in",
+      label: "Zoom map in",
+      contexts: ["map"],
+      bindings: ["+"],
+      group: "Map",
+      canExecute: canUseMap,
+      execute: features.map.zoomIn,
+    });
+    interactionCommands.register({
+      id: "map-zoom-out",
+      label: "Zoom map out",
+      contexts: ["map"],
+      bindings: ["-"],
+      group: "Map",
+      canExecute: canUseMap,
+      execute: features.map.zoomOut,
+    });
+    interactionCommands.register({
+      id: "map-fit",
+      label: "Fit the full field of view",
+      contexts: ["map"],
+      bindings: ["0"],
+      group: "Map",
+      canExecute: canUseMap,
+      execute: features.map.fitView,
+    });
+    interactionCommands.register({
+      id: "region-finish",
+      label: "Finish Region",
+      contexts: ["regionDraw"],
+      bindings: ["Enter"],
+      group: "Region Drawing",
+      execute: features.region.finishDrawing,
+    });
+    interactionCommands.register({
+      id: "region-cancel",
+      label: "Cancel Region",
+      contexts: ["regionDraw"],
+      bindings: ["Escape"],
+      group: "Region Drawing",
+      execute: features.region.cancelDrawing,
+    });
+    interactionCommands.register({
+      id: "region-undo",
+      label: "Undo the last Region vertex",
+      contexts: ["regionDraw"],
+      bindings: ["Backspace", "Control+z", "Meta+z"],
+      bindingLabel: "Backspace / Ctrl or Cmd+Z",
+      group: "Region Drawing",
+      execute: features.region.undoVertex,
+    });
+    interactionCommands.register({
+      id: "dismiss-inspector",
+      label: "Close the fixed plot inspector",
+      contexts: ["plotInspector"],
+      bindings: ["Escape"],
+      group: "Plot Inspection",
+      execute: dismissPinnedInspector,
+    });
+  }
+
+  function wireApplicationControls() {
+    registerInteractionCommands();
+    interactionCommands.decorateCommandElements(documentRef);
+    const regionList = documentRef.getElementById("region-list");
+    if (regionList && typeof windowRef.MutationObserver === "function") {
+      const observer = new windowRef.MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (node instanceof Element) {
+              interactionCommands.decorateCommandElements(node);
+            }
+          }
+        }
+      });
+      observer.observe(regionList, { childList: true, subtree: true });
+    }
+    interactionCommands.start();
+    documentRef.addEventListener("pointerdown", noteInspectorOwner, true);
+
+    documentRef.getElementById("shortcut-help-close-btn")
+      ?.addEventListener("click", closeShortcutHelp);
+
+    const helpDialog = /** @type {HTMLDialogElement | null} */ (
+      documentRef.getElementById("shortcut-help-dialog")
+    );
+    helpDialog?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeShortcutHelp();
+    });
+    helpDialog?.addEventListener("click", (event) => {
+      if (event.target !== helpDialog) {
+        return;
+      }
+      const bounds = helpDialog.getBoundingClientRect();
+      if (
+        event.clientX < bounds.left
+        || event.clientX > bounds.right
+        || event.clientY < bounds.top
+        || event.clientY > bounds.bottom
+      ) {
+        closeShortcutHelp();
+      }
+    });
+  }
 
   function saveUiState() {
     uiState.save();
@@ -289,6 +605,7 @@ export function createViewerApplication({
     features.background.renderControl(
       setActiveBackgroundKey,
       handleBackgroundRangeChange,
+      () => features.map.renderBackground(),
     );
   }
 
@@ -357,6 +674,7 @@ export function createViewerApplication({
   }
 
   async function renderAppliedUiState() {
+    dismissAllPinnedInspectors();
     features.background.setActive(getState().activeBackgroundKey);
     features.temporal.ensureValidState({ includeValueMode: false });
     features.qualityControl.ensureValidMetric();
@@ -443,6 +761,7 @@ export function createViewerApplication({
   }
 
   function wireInteractions() {
+    wireApplicationControls();
     wireUiStateActions();
     features.qualityControl.wire({
       plotly,
@@ -458,6 +777,7 @@ export function createViewerApplication({
     shell.wire({
       persistUiState: saveUiState,
       renderSections: renderWorkflowSections,
+      renderChrome: renderWorkflowChrome,
       requestPanelResize: schedulePanelPlotResize,
       onViewportChanged: () => {
         features.map.clearViewRange();

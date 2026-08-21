@@ -2,9 +2,7 @@ import {
   backgroundRangesEqual,
   getBackgroundAutoRange,
   getBackgroundControlRange,
-  isBackgroundRangeAuto,
   normalizeBackgroundKey,
-  normalizeBackgroundRange,
   normalizeBackgroundRanges,
   selectActiveBackground,
   selectAvailableBackgrounds,
@@ -80,54 +78,23 @@ export function createBackgroundFeature({ store, commands, document }) {
     return selectBackgroundDisplayRange(getState(), backgroundKey);
   }
 
-  /** @param {unknown} [backgroundKey] */
-  function rangeDomain(backgroundKey = getState().activeBackgroundKey) {
-    return getBackgroundControlRange(
-      selectBackgroundByKey(getState(), backgroundKey),
-    );
-  }
-
-  /** @param {unknown} [backgroundKey] */
-  function isAutoRange(backgroundKey = getState().activeBackgroundKey) {
-    return isBackgroundRangeAuto(getState(), backgroundKey);
-  }
-
-  /**
-   * @param {unknown} candidate
-   * @param {unknown} [backgroundKey]
-   */
-  function setRange(candidate, backgroundKey = getState().activeBackgroundKey) {
-    const state = getState();
-    const background = selectBackgroundByKey(state, backgroundKey);
-    const range = normalizeBackgroundRange(background, candidate);
-    if (!background || !range) {
-      return false;
-    }
-    const autoRange = getBackgroundAutoRange(background);
-    return commands.setBackgroundRange(
-      background.key,
-      autoRange && backgroundRangesEqual(range, autoRange) ? null : range,
-    );
-  }
-
-  /** @param {unknown} [backgroundKey] */
-  function resetRange(backgroundKey = getState().activeBackgroundKey) {
-    const background = selectBackgroundByKey(getState(), backgroundKey);
-    return background
-      ? commands.setBackgroundRange(background.key, null)
-      : false;
-  }
-
   /**
    * @param {(key: string) => void} onSelect
-   * @param {(range: { lower: number, upper: number }, key: string) => void} [onRangeChange]
+   * @param {(range: { lower: number, upper: number }, key: string) => void} [onRangeCommit]
+   * @param {(range: { lower: number, upper: number }, key: string) => void} [onRangePreview]
    */
-  function renderControl(onSelect, onRangeChange = () => {}) {
+  function renderControl(
+    onSelect,
+    onRangeCommit = () => {},
+    onRangePreview = () => {},
+  ) {
     const state = getState();
     const activeKey = normalizeBackgroundKey(state, state.activeBackgroundKey);
     const background = selectBackgroundByKey(state, activeKey);
     const domain = getBackgroundControlRange(background);
     const range = selectBackgroundDisplayRange(state, activeKey);
+    /** @type {{ lower: number, upper: number } | null} */
+    let interactionStartRange = null;
 
     /**
      * Store one effective display range, removing the manual override when it
@@ -136,8 +103,9 @@ export function createBackgroundFeature({ store, commands, document }) {
      * @param {any} currentBackground
      * @param {{ lower: number, upper: number }} currentDomain
      * @param {{ lower: number, upper: number }} next
+     * @param {(range: { lower: number, upper: number }, key: string) => void} notify
      */
-    function commitDisplayRange(currentBackground, currentDomain, next) {
+    function applyDisplayRange(currentBackground, currentDomain, next, notify) {
       const autoRange = getBackgroundAutoRange(currentBackground);
       const isAuto = Boolean(
         autoRange && backgroundRangesEqual(next, autoRange),
@@ -149,7 +117,7 @@ export function createBackgroundFeature({ store, commands, document }) {
         return false;
       }
       panel.renderRange({ range: next, domain: currentDomain, autoRange });
-      onRangeChange(next, currentBackground.key);
+      notify(next, currentBackground.key);
       return true;
     }
 
@@ -174,7 +142,12 @@ export function createBackgroundFeature({ store, commands, document }) {
           value,
           currentDomain,
         );
-        commitDisplayRange(currentBackground, currentDomain, next);
+        applyDisplayRange(
+          currentBackground,
+          currentDomain,
+          next,
+          onRangePreview,
+        );
       },
       onRangeReset(handle) {
         const currentState = getState();
@@ -190,23 +163,49 @@ export function createBackgroundFeature({ store, commands, document }) {
           handle,
           autoRange,
         );
-        commitDisplayRange(currentBackground, currentDomain, next);
+        applyDisplayRange(
+          currentBackground,
+          currentDomain,
+          next,
+          onRangeCommit,
+        );
+      },
+      onRangeInteractionStart() {
+        const currentRange = selectBackgroundDisplayRange(getState(), activeKey);
+        interactionStartRange = currentRange ? { ...currentRange } : null;
+      },
+      onRangeInteractionEnd({ canceled }) {
+        const startRange = interactionStartRange;
+        interactionStartRange = null;
+        const currentState = getState();
+        const currentBackground = selectBackgroundByKey(currentState, activeKey);
+        const currentDomain = getBackgroundControlRange(currentBackground);
+        const currentRange = selectBackgroundDisplayRange(currentState, activeKey);
+        if (!currentBackground || !currentDomain || !currentRange || !startRange) {
+          return;
+        }
+        if (canceled) {
+          applyDisplayRange(
+            currentBackground,
+            currentDomain,
+            startRange,
+            onRangePreview,
+          );
+          return;
+        }
+        if (!backgroundRangesEqual(currentRange, startRange)) {
+          onRangeCommit(currentRange, currentBackground.key);
+        }
       },
     });
   }
 
   return Object.freeze({
     active,
-    activeDisplayRange: displayRange,
     applyPersistedState,
-    displayRange,
-    isAutoRange,
     normalizeKey,
     range: displayRange,
-    rangeDomain,
     renderControl,
-    resetRange,
     setActive,
-    setRange,
   });
 }

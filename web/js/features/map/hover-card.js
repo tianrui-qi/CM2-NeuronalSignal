@@ -136,28 +136,173 @@ export function placeHoverCard(anchor, cardSize, viewport, overlayRect = null) {
 }
 
 
+/** @param {unknown} values @param {[number, number]} fallback */
+function finiteRange(values, fallback) {
+  if (!Array.isArray(values) || values.length < 2) {
+    return fallback;
+  }
+  const lower = Number(values[0]);
+  const upper = Number(values[1]);
+  return Number.isFinite(lower) && Number.isFinite(upper) && lower !== upper
+    ? [lower, upper]
+    : fallback;
+}
+
+
+/** @param {unknown} dash @param {number} width */
+function canvasLineDash(dash, width) {
+  const unit = Math.max(1, width);
+  switch (dash) {
+    case "dot":
+      return [unit, 3 * unit];
+    case "dash":
+      return [4 * unit, 3 * unit];
+    case "longdash":
+      return [8 * unit, 3 * unit];
+    case "dashdot":
+      return [4 * unit, 3 * unit, unit, 3 * unit];
+    case "longdashdot":
+      return [8 * unit, 3 * unit, unit, 3 * unit];
+    default:
+      return [];
+  }
+}
+
+
+/**
+ * Draw the Plotly-independent Temporal descriptor without constructing a
+ * Plotly graph. The descriptor remains the sole owner of scientific values,
+ * guides, colors, and annotations.
+ *
+ * @param {HTMLCanvasElement} canvas
+ * @param {any} trace
+ * @param {{ plotHeight: number, yRange: number[] }} viewport
+ * @param {Window} window
+ */
+function drawTracePreview(canvas, trace, viewport, window) {
+  const cssWidth = Math.max(1, canvas.clientWidth);
+  const cssHeight = Math.max(1, canvas.clientHeight);
+  const pixelRatio = Math.max(1, Number(window.devicePixelRatio) || 1);
+  const backingWidth = Math.max(1, Math.round(cssWidth * pixelRatio));
+  const backingHeight = Math.max(1, Math.round(cssHeight * pixelRatio));
+  if (canvas.width !== backingWidth) {
+    canvas.width = backingWidth;
+  }
+  if (canvas.height !== backingHeight) {
+    canvas.height = backingHeight;
+  }
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Canvas 2D is unavailable for the neuron preview.");
+  }
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, cssWidth, cssHeight);
+
+  const [xMin, xMax] = finiteRange(trace.frameRange, [0, 1]);
+  const [yMin, yMax] = finiteRange(viewport.yRange, [-1, 1]);
+  const xSpan = xMax - xMin;
+  const ySpan = yMax - yMin;
+  const mapX = (value) => ((value - xMin) / xSpan) * cssWidth;
+  const mapY = (value) => cssHeight - ((value - yMin) / ySpan) * cssHeight;
+
+  context.save();
+  context.beginPath();
+  context.rect(0, 0, cssWidth, cssHeight);
+  context.clip();
+  for (const series of trace.traces ?? []) {
+    const x = series?.x;
+    const y = series?.y;
+    const pointCount = Math.min(Number(x?.length) || 0, Number(y?.length) || 0);
+    if (!pointCount) {
+      continue;
+    }
+    const lineWidth = Math.max(0.5, Number(series.line?.width) || 1);
+    const dash = canvasLineDash(series.line?.dash, lineWidth);
+    context.beginPath();
+    context.strokeStyle = String(series.line?.color ?? "rgba(255, 255, 255, 0.72)");
+    context.lineWidth = lineWidth;
+    context.lineCap = dash.length ? "round" : "butt";
+    context.lineJoin = "round";
+    context.setLineDash(dash);
+    context.globalAlpha = Number.isFinite(Number(series.opacity))
+      ? clamp(Number(series.opacity), 0, 1)
+      : 1;
+    let hasOpenSegment = false;
+    for (let index = 0; index < pointCount; index += 1) {
+      const dataX = Number(x[index]);
+      const dataY = Number(y[index]);
+      if (!Number.isFinite(dataX) || !Number.isFinite(dataY)) {
+        hasOpenSegment = false;
+        continue;
+      }
+      const screenX = mapX(dataX);
+      const screenY = mapY(dataY);
+      if (hasOpenSegment) {
+        context.lineTo(screenX, screenY);
+      } else {
+        context.moveTo(screenX, screenY);
+        hasOpenSegment = true;
+      }
+    }
+    context.stroke();
+  }
+
+  const computedStyle = window.getComputedStyle(canvas);
+  for (const annotation of trace.annotations ?? []) {
+    const dataX = Number(annotation?.x);
+    const dataY = Number(annotation?.y);
+    if (!Number.isFinite(dataX) || !Number.isFinite(dataY)) {
+      continue;
+    }
+    const fontSize = Math.max(1, Number(annotation.font?.size) || 11);
+    const fontFamily = String(annotation.font?.family ?? computedStyle.fontFamily);
+    context.save();
+    context.fillStyle = String(annotation.font?.color ?? computedStyle.color);
+    context.globalAlpha = Number.isFinite(Number(annotation.opacity))
+      ? clamp(Number(annotation.opacity), 0, 1)
+      : 1;
+    context.font = `${fontSize}px ${fontFamily}`;
+    context.textAlign = annotation.xanchor === "right"
+      ? "right"
+      : annotation.xanchor === "center"
+        ? "center"
+        : "left";
+    context.textBaseline = annotation.yanchor === "top"
+      ? "top"
+      : annotation.yanchor === "middle"
+        ? "middle"
+        : "bottom";
+    context.fillText(
+      String(annotation.text ?? ""),
+      mapX(dataX) + (Number(annotation.xshift) || 0),
+      mapY(dataY) - (Number(annotation.yshift) || 0),
+    );
+    context.restore();
+  }
+  context.restore();
+}
+
+
 /**
  * Screen-only Map hover presentation. Scientific trace construction is
- * injected through the Temporal facade; this view owns only DOM, Plotly, and
- * stale-render suppression.
+ * injected through the Temporal facade; this view owns only DOM, Canvas2D,
+ * and stale-render suppression.
  *
  * @param {{
  *   document: Document,
  *   window: Window,
- *   plotly: { react: (plot: HTMLElement, data: any[], layout: any, config: any) => Promise<any> },
  *   requestAnimationFrame: (callback: FrameRequestCallback) => number,
  * }} dependencies
  */
 export function createMapNeuronHoverCard({
   document,
   window,
-  plotly,
   requestAnimationFrame,
 }) {
-  let revision = 0;
+  let latestRenderRequest = 0;
   let framePending = false;
-  let rendering = false;
-  /** @type {{ revision: number, payload: any } | null} */
+  /** @type {{ requestId: number, payload: any } | null} */
   let queued = null;
 
   function ensureCard() {
@@ -169,17 +314,21 @@ export function createMapNeuronHoverCard({
     card.id = "map-neuron-preview";
     card.className = "map-neuron-preview floating-surface hidden";
     card.setAttribute("aria-hidden", "true");
+    card.setAttribute("role", "region");
+    card.setAttribute("aria-label", "Neuron details");
 
     const header = document.createElement("header");
     header.className = "map-neuron-preview-header";
     const title = document.createElement("span");
     title.id = "map-neuron-preview-title";
     title.className = "map-neuron-preview-title";
-    header.append(title);
+    header.appendChild(title);
 
-    const plot = document.createElement("div");
+    const plot = document.createElement("canvas");
     plot.id = "map-neuron-preview-plot";
     plot.className = "map-neuron-preview-plot";
+    plot.setAttribute("role", "img");
+    plot.setAttribute("aria-label", "Neuron activity trace");
 
     const metadata = document.createElement("dl");
     metadata.id = "map-neuron-preview-metadata";
@@ -226,72 +375,43 @@ export function createMapNeuronHoverCard({
     card.style.top = `${placement.top}px`;
   }
 
-  async function flush() {
-    if (rendering) {
+  function flush() {
+    const next = queued;
+    queued = null;
+    if (!next || next.requestId !== latestRenderRequest) {
       return;
     }
-    rendering = true;
-    while (queued) {
-      const next = queued;
-      queued = null;
-      const { payload } = next;
-      const card = ensureCard();
-      const title = document.getElementById("map-neuron-preview-title");
-      const plot = /** @type {HTMLElement} */ (
-        document.getElementById("map-neuron-preview-plot")
-      );
-      title.textContent = payload.title;
-      renderMetadata(payload.metadataColumns);
-      card.classList.remove("hidden");
-      card.classList.add("is-rendering");
+    const { payload } = next;
+    const card = ensureCard();
+    const title = document.getElementById("map-neuron-preview-title");
+    const plot = /** @type {HTMLCanvasElement} */ (
+      document.getElementById("map-neuron-preview-plot")
+    );
+    title.textContent = payload.title;
+    renderMetadata(payload.metadataColumns);
+    card.classList.remove("hidden");
 
-      const viewport = buildHoverTraceViewport(
-        payload.trace,
-        window.innerHeight,
-      );
-      plot.style.height = `${viewport.plotHeight}px`;
-      try {
-        await plotly.react(plot, payload.trace.traces, {
-          margin: { l: 0, r: 0, t: 0, b: 0 },
-          paper_bgcolor: "rgba(0,0,0,0)",
-          plot_bgcolor: "rgba(0,0,0,0)",
-          xaxis: {
-            visible: false,
-            fixedrange: true,
-            range: payload.trace.frameRange,
-          },
-          yaxis: {
-            visible: false,
-            fixedrange: true,
-            range: viewport.yRange,
-          },
-          shapes: payload.trace.shapes,
-          annotations: payload.trace.annotations,
-          height: viewport.plotHeight,
-          showlegend: false,
-          hovermode: false,
-          dragmode: false,
-        }, {
-          responsive: false,
-          staticPlot: true,
-          displayModeBar: false,
-          displaylogo: false,
-        });
-      } catch (error) {
-        console.error(error);
-        if (next.revision === revision) {
-          card.classList.add("hidden");
-          card.classList.remove("is-rendering");
-        }
-        continue;
+    const viewport = buildHoverTraceViewport(
+      payload.trace,
+      window.innerHeight,
+    );
+    plot.style.height = `${viewport.plotHeight}px`;
+    plot.setAttribute("aria-label", `${payload.title} activity trace`);
+    try {
+      drawTracePreview(plot, payload.trace, viewport, window);
+    } catch (error) {
+      console.error(error);
+      if (next.requestId === latestRenderRequest) {
+        card.classList.add("hidden");
+        card.setAttribute("aria-hidden", "true");
       }
-      if (next.revision !== revision) {
-        continue;
-      }
-      position(card, payload.anchor);
-      card.classList.remove("is-rendering");
+      return;
     }
-    rendering = false;
+    if (next.requestId !== latestRenderRequest) {
+      return;
+    }
+    position(card, payload.anchor);
+    card.setAttribute("aria-hidden", "false");
   }
 
   function scheduleFlush() {
@@ -301,29 +421,43 @@ export function createMapNeuronHoverCard({
     framePending = true;
     requestAnimationFrame(() => {
       framePending = false;
-      void flush();
+      flush();
     });
   }
 
   /** @param {any} payload */
   function show(payload) {
-    revision += 1;
-    queued = { revision, payload };
+    latestRenderRequest += 1;
+    queued = { requestId: latestRenderRequest, payload };
     const card = ensureCard();
     card.classList.add("hidden");
-    card.classList.remove("is-rendering");
-    scheduleFlush();
+    card.setAttribute("aria-hidden", "true");
+    if (payload.immediate === true) {
+      flush();
+    } else {
+      scheduleFlush();
+    }
+    return true;
+  }
+
+  /** @param {{ x: number, y: number }} anchor */
+  function move(anchor) {
+    const card = document.getElementById("map-neuron-preview");
+    if (!card || card.classList.contains("hidden")) {
+      return false;
+    }
+    position(card, anchor);
     return true;
   }
 
   function hide() {
-    revision += 1;
+    latestRenderRequest += 1;
     queued = null;
     const card = document.getElementById("map-neuron-preview");
     card?.classList.add("hidden");
-    card?.classList.remove("is-rendering");
+    card?.setAttribute("aria-hidden", "true");
     return true;
   }
 
-  return Object.freeze({ show, hide });
+  return Object.freeze({ show, hide, move });
 }

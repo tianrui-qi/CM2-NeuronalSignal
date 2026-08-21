@@ -1,5 +1,6 @@
 .control-tooltip {
   position: fixed;
+  inset: auto;
   z-index: var(--z-tooltip, 60);
   width: max-content;
   max-width: min(260px, calc(100vw - 16px));
@@ -13,6 +14,7 @@
   font-size: var(--font-size-xs);
   font-weight: 500;
   line-height: 1.35;
+  margin: 0;
   overflow-wrap: anywhere;
   pointer-events: none;
   text-align: left;
@@ -22,6 +24,6 @@
   display: none;
 }
 
-dialog.control-tooltip-host {
-  overflow: visible;
+.control-tooltip[data-dialog-layer] {
+  position: absolute;
 }

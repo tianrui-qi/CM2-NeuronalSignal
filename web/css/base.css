@@ -2,11 +2,17 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  background: var(--edge-fallback-color);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
   color: var(--text);
-  background: #070707;
   overflow: hidden;
 }
 

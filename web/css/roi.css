@@ -66,19 +66,6 @@
   background: var(--surface-selected);
 }
 
-.roi-row:has(> .roi-row-select:hover) {
-  border-color: var(--border-hover);
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    var(--surface-interactive);
-}
-
-.roi-row-active:has(> .roi-row-select:hover) {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    var(--surface-selected);
-}
-
 .roi-row:has(> .roi-row-select:active) {
   border-color: var(--border-hover);
   background:
@@ -128,8 +115,19 @@
   justify-self: center;
 }
 
-.roi-row-swatch::before {
-  content: "";
+.roi-row-swatch-visual,
+.roi-row-action-visual {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.roi-row-swatch-chip {
   width: 14px;
   height: 14px;
   border: 1px solid rgba(255, 255, 255, 0.46);
@@ -162,14 +160,6 @@
   background: transparent;
 }
 
-.roi-row > .roi-row-swatch:hover,
-.roi-row > .roi-row-action-btn.mini-btn:hover:not(:disabled),
-.roi-row > .roi-row-add-default:hover {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    transparent;
-}
-
 .roi-row > .roi-row-swatch:active,
 .roi-row > .roi-row-action-btn.mini-btn:active:not(:disabled),
 .roi-row > .roi-row-add-default:active {
@@ -192,15 +182,9 @@
 .roi-row-clear,
 .roi-row-delete {
   position: relative;
-  flex: 0 0 var(--inline-action-size);
-  width: var(--inline-action-size);
-  min-width: var(--inline-action-size);
-  padding: 0;
-  font-size: 0;
-  line-height: 0;
 }
 
-.roi-row-box::before {
+.roi-row-box > .roi-row-action-visual::before {
   content: "";
   position: absolute;
   left: 50%;
@@ -213,7 +197,7 @@
   transform: translate(-50%, -50%);
 }
 
-.roi-row-box::after {
+.roi-row-box > .roi-row-action-visual::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -226,7 +210,7 @@
   transform: translate(-50%, -50%);
 }
 
-.roi-row-clear::before {
+.roi-row-clear > .roi-row-action-visual::before {
   content: "";
   position: absolute;
   left: 50%;
@@ -240,7 +224,7 @@
   transform: translate(-50%, -50%) rotate(-18deg);
 }
 
-.roi-row-clear::after {
+.roi-row-clear > .roi-row-action-visual::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -253,8 +237,8 @@
   transform: translate(-50%, -50%);
 }
 
-.roi-row-delete::before,
-.roi-row-delete::after {
+.roi-row-delete > .roi-row-action-visual::before,
+.roi-row-delete > .roi-row-action-visual::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -266,11 +250,11 @@
   transform-origin: center;
 }
 
-.roi-row-delete::before {
+.roi-row-delete > .roi-row-action-visual::before {
   transform: translate(-50%, -50%) rotate(45deg);
 }
 
-.roi-row-delete::after {
+.roi-row-delete > .roi-row-action-visual::after {
   transform: translate(-50%, -50%) rotate(-45deg);
 }
 
@@ -296,11 +280,6 @@
   text-align: left;
 }
 
-.roi-row-color-swatch,
-.roi-row-add-swatch {
-  cursor: pointer;
-}
-
 .roi-color-popover {
   left: 0;
   display: grid;
@@ -320,8 +299,50 @@
   cursor: pointer;
 }
 
-.roi-color-option:hover,
 .roi-color-option:focus-visible {
   outline: 2px solid var(--accent-mint);
   outline-offset: 1px;
+}
+
+@media (hover: hover) {
+  .roi-row:has(> .roi-row-select:hover) {
+    border-color: var(--border-hover);
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      var(--surface-interactive);
+  }
+
+  .roi-row-active:has(> .roi-row-select:hover) {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      var(--surface-selected);
+  }
+
+  .roi-row > .roi-row-swatch:hover,
+  .roi-row > .roi-row-action-btn.mini-btn:hover:not(:disabled),
+  .roi-row > .roi-row-add-default:hover {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      transparent;
+  }
+
+  .roi-color-option:hover {
+    outline: 2px solid var(--accent-mint);
+    outline-offset: 1px;
+  }
+}
+
+@media (max-width: 360px) {
+  .roi-row {
+    gap: var(--space-2);
+  }
+
+  .roi-row-header {
+    grid-template-columns: repeat(2, var(--inline-action-size)) minmax(0, 1fr) 48px 48px repeat(2, var(--inline-action-size));
+  }
+
+  .roi-row-select {
+    grid-template-columns: minmax(0, 1fr) 48px 48px;
+    gap: var(--space-2);
+  }
 }

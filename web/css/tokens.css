@@ -1,6 +1,8 @@
 :root {
   color-scheme: dark;
 
+  --edge-fallback-color: #6a6a6a;
+
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
 
   --text: #f7f1e7;
@@ -49,8 +51,8 @@
   --section-header-height: 30px;
   --table-header-height: 20px;
   --inline-action-size: 20px;
-  --modal-icon-size: 30px;
-  --slider-hit-height: 18px;
+  --slider-layout-height: 18px;
+  --slider-input-height: 18px;
   --slider-thumb-size: 14px;
   --slider-track-height: 4px;
   --slider-track-rest: rgba(255, 255, 255, 0.22);
@@ -68,8 +70,14 @@
 
   --z-overlay: 10;
   --z-status: 20;
-  --z-modal: 30;
   --z-menu: 45;
 
-  --overlay-width: min(340px, calc(100vw - 36px));
+  --overlay-width: 340px;
+  --sheet-handle-size: 56px;
+}
+
+@media (any-pointer: coarse) {
+  :root {
+    --slider-input-height: 44px;
+  }
 }

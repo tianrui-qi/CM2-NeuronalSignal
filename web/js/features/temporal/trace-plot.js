@@ -1,9 +1,8 @@
 import { buildTracePlotData } from "./model.js";
+import { wireConfirmedBlankTap } from "../../shared/ui/confirmed-tap.js";
 
 
 export const TRACE_PLOT_MARGIN = Object.freeze({ l: 0, r: 0, t: 0, b: 0 });
-export const TRACE_DESELECT_BUTTON_SIZE_PX = 20;
-export const TRACE_DESELECT_BUTTON_INSET_PX = 8;
 export const TRACE_DESELECT_HIDE_DELAY_MS = 140;
 
 
@@ -109,10 +108,13 @@ export function createTemporalTracePlot({ document, window }) {
   /** @type {null | {
    *   deselectNeuron: (neuronId: number) => unknown,
    *   setHoverNeuronId: (neuronId: number | null) => unknown,
+   *   onInspectorPinned?: () => unknown,
    * }} */
   let effects = null;
   /** @type {number | null} */
   let deselectHideTimer = null;
+  /** @type {number | null} */
+  let pinnedNeuronId = null;
 
   function requireEffects() {
     if (!effects) {
@@ -135,17 +137,15 @@ export function createTemporalTracePlot({ document, window }) {
   }
 
   function getDeselectButton() {
-    let button = /** @type {HTMLButtonElement | null} */ (
+    const button = /** @type {HTMLButtonElement | null} */ (
       document.getElementById("trace-deselect-btn")
     );
-    if (button) {
+    if (!button) {
+      throw new Error("Trace deselect control is missing from the viewer DOM.");
+    }
+    if (button.dataset.traceActionWired === "true") {
       return button;
     }
-    button = document.createElement("button");
-    button.id = "trace-deselect-btn";
-    button.type = "button";
-    button.className = "mini-btn roi-row-delete trace-deselect-btn hidden";
-    button.setAttribute("aria-label", "Deselect hovered neuron");
     button.dataset.controlDescription = (
       "Remove this neuron from the active ROI selection"
     );
@@ -157,24 +157,33 @@ export function createTemporalTracePlot({ document, window }) {
       const neuronId = Number(button.dataset.neuronId);
       requireEffects().deselectNeuron(neuronId);
     });
-    document.body.appendChild(button);
+    button.dataset.traceActionWired = "true";
     return button;
   }
 
   /** @param {{ clearHover?: boolean }} [options] */
   function hideDeselectButton({ clearHover = true } = {}) {
     clearDeselectHideTimer();
-    const button = document.getElementById("trace-deselect-btn");
-    if (button) {
-      button.classList.add("hidden");
-      delete button.dataset.neuronId;
+    const existingButton = document.getElementById("trace-deselect-btn");
+    const wasVisible = pinnedNeuronId !== null
+      || Boolean(existingButton && !existingButton.classList.contains("hidden"));
+    pinnedNeuronId = null;
+    if (existingButton) {
+      existingButton.classList.add("hidden");
+      delete existingButton.dataset.neuronId;
+      existingButton.style.removeProperty("top");
+      existingButton.style.removeProperty("right");
     }
     if (clearHover) {
       requireEffects().setHoverNeuronId(null);
     }
+    return wasVisible;
   }
 
   function scheduleDeselectButtonHide() {
+    if (pinnedNeuronId !== null) {
+      return;
+    }
     clearDeselectHideTimer();
     deselectHideTimer = window.setTimeout(() => {
       const button = document.getElementById("trace-deselect-btn");
@@ -185,8 +194,16 @@ export function createTemporalTracePlot({ document, window }) {
     }, TRACE_DESELECT_HIDE_DELAY_MS);
   }
 
-  /** @param {Cm2PlotElement} plot @param {any} point */
-  function showDeselectButton(plot, point) {
+  /**
+   * Place the action so its bottom edge follows the trace baseline and its
+   * right edge keeps the shared panel inset. Coarse pointers enlarge the
+   * transparent hit target while keeping the visible action on these edges.
+   *
+   * @param {Cm2PlotElement} plot
+   * @param {any} point
+   * @param {{ pinned?: boolean }} [options]
+   */
+  function showDeselectButton(plot, point, { pinned = false } = {}) {
     const meta = point.data?.meta ?? point.fullData?.meta ?? {};
     const neuronId = Number.isFinite(meta.neuronId) ? meta.neuronId : Number(point.customdata);
     if (!Number.isFinite(neuronId)) {
@@ -196,21 +213,31 @@ export function createTemporalTracePlot({ document, window }) {
 
     const button = getDeselectButton();
     const plotRect = plot.getBoundingClientRect();
-    const panelRect = plot.closest(".trace-plot-panel")?.getBoundingClientRect() ?? plotRect;
+    const panel = plot.closest(".trace-plot-panel");
+    const panelRect = panel?.getBoundingClientRect() ?? plotRect;
     const yaxis = point.yaxis ?? plot._fullLayout?.yaxis;
     const baseline = Number.isFinite(meta.baseline) ? meta.baseline : point.y;
     const yPixel = yaxis && typeof yaxis.d2p === "function"
       ? yaxis.d2p(baseline) + (yaxis._offset ?? 0)
       : plotRect.height / 2;
-    const y = plotRect.top + yPixel - TRACE_DESELECT_BUTTON_SIZE_PX;
-    const rightEdge = Math.min(plotRect.right, panelRect.right) - TRACE_DESELECT_BUTTON_INSET_PX;
-    const x = rightEdge - TRACE_DESELECT_BUTTON_SIZE_PX;
 
     button.dataset.neuronId = String(neuronId);
-    button.style.left = `${x}px`;
-    button.style.top = `${y}px`;
+    button.setAttribute("aria-label", `Deselect neuron ${neuronId}`);
     button.classList.remove("hidden");
+    const buttonRect = button.getBoundingClientRect();
+    const rootStyles = window.getComputedStyle(document.documentElement);
+    const parsedInset = Number.parseFloat(
+      rootStyles.getPropertyValue("--ui-spacing"),
+    );
+    const inset = Number.isFinite(parsedInset) ? parsedInset : 8;
+    const visibleRightEdge = Math.min(plotRect.right, panelRect.right);
+    button.style.top = `${plotRect.top - panelRect.top + yPixel - buttonRect.height}px`;
+    button.style.right = `${panelRect.right - visibleRightEdge + inset}px`;
     clearDeselectHideTimer();
+    pinnedNeuronId = pinned ? neuronId : null;
+    if (pinned) {
+      requireEffects().onInspectorPinned?.();
+    }
     requireEffects().setHoverNeuronId(neuronId);
   }
 
@@ -219,33 +246,94 @@ export function createTemporalTracePlot({ document, window }) {
     if (plot.dataset.traceHoverHandlersAttached === "true") {
       return false;
     }
-    plot.on("plotly_hover", (event) => {
+    plot.__cm2TraceHoverHandler = (event) => {
+      if (pinnedNeuronId !== null) {
+        return;
+      }
       const point = getTraceHoverPoint(event);
       if (!point) {
         scheduleDeselectButtonHide();
         return;
       }
       showDeselectButton(plot, point);
-    });
-    plot.on("plotly_unhover", () => {
+    };
+    plot.__cm2TraceUnhoverHandler = () => {
       scheduleDeselectButtonHide();
-    });
+    };
+    plot.__cm2TraceClickHandler = (event) => {
+      plot.__cm2TraceTapSession?.claim();
+      const point = getTraceHoverPoint(event);
+      if (!point) {
+        hideDeselectButton();
+        return;
+      }
+      const pointerType = plot.__cm2TraceActivationPointerType;
+      delete plot.__cm2TraceActivationPointerType;
+      showDeselectButton(plot, point, {
+        pinned: pointerType === "touch" || pointerType === "pen",
+      });
+    };
+    plot.__cm2TracePointerDownHandler = (event) => {
+      plot.__cm2TraceActivationPointerType = event.pointerType;
+    };
+    plot.__cm2TracePointerCancelHandler = () => {
+      delete plot.__cm2TraceActivationPointerType;
+    };
+    plot.on("plotly_hover", plot.__cm2TraceHoverHandler);
+    plot.on("plotly_unhover", plot.__cm2TraceUnhoverHandler);
+    plot.on("plotly_click", plot.__cm2TraceClickHandler);
     plot.__cm2TraceMouseLeaveHandler = () => scheduleDeselectButtonHide();
+    plot.__cm2TraceTapSession = wireConfirmedBlankTap({
+      element: plot,
+      onBlankTap: () => {
+        if (pinnedNeuronId !== null) {
+          hideDeselectButton();
+        }
+      },
+    });
+    plot.addEventListener("pointerdown", plot.__cm2TracePointerDownHandler, true);
+    plot.addEventListener("pointercancel", plot.__cm2TracePointerCancelHandler, true);
     plot.addEventListener("mouseleave", plot.__cm2TraceMouseLeaveHandler);
+    plot.tabIndex = 0;
+    plot.setAttribute(
+      "aria-label",
+      "Temporal traces; hover with a mouse, or tap with touch or pen, to show the deselect action",
+    );
     plot.dataset.traceHoverHandlersAttached = "true";
     return true;
   }
 
   /** @param {Cm2PlotElement} plot */
   function detachHoverHandlers(plot) {
-    if (typeof plot.removeAllListeners === "function") {
-      plot.removeAllListeners("plotly_hover");
-      plot.removeAllListeners("plotly_unhover");
+    if (typeof plot.removeListener === "function") {
+      if (plot.__cm2TraceHoverHandler) {
+        plot.removeListener("plotly_hover", plot.__cm2TraceHoverHandler);
+      }
+      if (plot.__cm2TraceUnhoverHandler) {
+        plot.removeListener("plotly_unhover", plot.__cm2TraceUnhoverHandler);
+      }
+      if (plot.__cm2TraceClickHandler) {
+        plot.removeListener("plotly_click", plot.__cm2TraceClickHandler);
+      }
     }
     if (plot.__cm2TraceMouseLeaveHandler) {
       plot.removeEventListener("mouseleave", plot.__cm2TraceMouseLeaveHandler);
       delete plot.__cm2TraceMouseLeaveHandler;
     }
+    if (plot.__cm2TracePointerDownHandler) {
+      plot.removeEventListener("pointerdown", plot.__cm2TracePointerDownHandler, true);
+      delete plot.__cm2TracePointerDownHandler;
+    }
+    if (plot.__cm2TracePointerCancelHandler) {
+      plot.removeEventListener("pointercancel", plot.__cm2TracePointerCancelHandler, true);
+      delete plot.__cm2TracePointerCancelHandler;
+    }
+    delete plot.__cm2TraceActivationPointerType;
+    plot.__cm2TraceTapSession?.destroy();
+    delete plot.__cm2TraceTapSession;
+    delete plot.__cm2TraceHoverHandler;
+    delete plot.__cm2TraceUnhoverHandler;
+    delete plot.__cm2TraceClickHandler;
     delete plot.dataset.traceHoverHandlersAttached;
   }
 
@@ -307,6 +395,10 @@ export function createTemporalTracePlot({ document, window }) {
       return Promise.resolve(false);
     }
 
+    if (pinnedNeuronId !== null && !neuronIds.includes(pinnedNeuronId)) {
+      hideDeselectButton();
+    }
+
     setPanelEmpty(plot, false, plotly);
     onDownloadEnabled(true);
     const plotHeight = Math.max(1, Math.ceil(height));
@@ -320,14 +412,17 @@ export function createTemporalTracePlot({ document, window }) {
       shapes,
       annotations,
       height: plotHeight,
+      dragmode: false,
       showlegend: false,
       hovermode: "closest",
       hoverdistance: 18,
       spikedistance: -1,
     }, {
-      responsive: true,
+      responsive: false,
       displaylogo: false,
       displayModeBar: false,
+      doubleClick: false,
+      scrollZoom: false,
     }).then(() => {
       attachHoverHandlers(plot);
       return true;
@@ -381,6 +476,7 @@ export function createTemporalTracePlot({ document, window }) {
    * @param {{
    *   deselectNeuron: (neuronId: number) => unknown,
    *   setHoverNeuronId: (neuronId: number | null) => unknown,
+   *   onInspectorPinned?: () => unknown,
    * }} nextEffects
    */
   function wire(nextEffects) {
@@ -389,7 +485,16 @@ export function createTemporalTracePlot({ document, window }) {
   }
 
   return {
+    dismissPinnedInspector() {
+      if (pinnedNeuronId === null) {
+        return false;
+      }
+      return hideDeselectButton();
+    },
     exportImage,
+    hasPinnedInspector() {
+      return pinnedNeuronId !== null;
+    },
     hideDeselectButton,
     render,
     wire,

@@ -78,14 +78,13 @@ after both phases succeed.
 
 `src/cache/builder.py` builds only from the configured mmap and CNMF-E HDF5.
 Serve never builds cache. `src/cache/publisher.py` builds a complete sibling
-staging generation, validates it, promotes it, and restores the prior cache on
+staging directory, validates it, promotes it, and restores the prior cache on
 an ordinary promotion failure. Publication rejects link targets, unsafe or
 non-cache destinations, and targets containing an input artifact.
 
 ## Canonical Cache Contract
 
-There is one strict, unversioned cache layout with no compatibility names or
-extra entries:
+There is one strict cache layout with no compatibility names or extra entries:
 
 ```text
 metadata.json
@@ -156,7 +155,7 @@ reject the profile.
 Ordinary `python -m script.serve` behavior:
 
 - a complete browser `localStorage` state is authoritative at
-  `cm2.ui-state:v1:<serve_path stem>` for the current origin; keep profile
+  `cm2.ui-state:{storageKey}` for the current origin; keep profile
   stems unique for datasets served from the same origin;
 - the lowercase `cm2` storage namespace is a stable persistence contract and
   does not follow repository display-name changes;

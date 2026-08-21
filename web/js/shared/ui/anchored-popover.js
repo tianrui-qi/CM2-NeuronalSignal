@@ -65,8 +65,14 @@ export function placeAnchoredPopover({
 
   const anchorRect = anchor.getBoundingClientRect();
   const boundaryRect = boundary?.getBoundingClientRect() ?? null;
-  const viewportTop = padding;
-  const viewportBottom = Math.max(viewportTop, window.innerHeight - padding);
+  const visualViewport = window.visualViewport;
+  const viewportOffsetTop = visualViewport?.offsetTop ?? 0;
+  const viewportHeight = visualViewport?.height ?? window.innerHeight;
+  const viewportTop = viewportOffsetTop + padding;
+  const viewportBottom = Math.max(
+    viewportTop,
+    viewportOffsetTop + viewportHeight - padding,
+  );
   const effectiveTop = Math.max(
     viewportTop,
     boundaryRect ? boundaryRect.top + padding : viewportTop,

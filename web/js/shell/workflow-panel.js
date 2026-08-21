@@ -5,8 +5,7 @@
  * @param {{
  *   store: { getSnapshot: () => Record<string, any> },
  *   commands: {
- *     activateWorkflowSection: (section: string) => unknown,
- *     toggleWorkflowSection: (section: string) => unknown,
+ *     toggleWorkflowSection: (section: string) => { blocked?: boolean } | null | undefined,
  *     setActiveWorkflowSection: (section: string) => unknown,
  *   },
  *   renderScheduler: { scheduleScrollSync: (callback: () => void) => void },
@@ -49,37 +48,11 @@ export function createWorkflowPanel({
 
       const toggle = document.querySelector(`[data-section-toggle="${section}"]`);
       toggle?.setAttribute("aria-expanded", String(isOpen));
-    }
-  }
-
-  /**
-   * @param {unknown} section
-   * @param {{
-   *   persistUiState: () => void,
-   *   renderSections: (options: { includeMap: boolean, includePlots: boolean }) => void,
-   * }} effects
-   * @param {{ scroll?: boolean, includePlots?: boolean }} [options]
-   */
-  function activateSection(
-    section,
-    effects,
-    { scroll = false, includePlots = false } = {},
-  ) {
-    const state = store.getSnapshot();
-    const next = normalizeSection(section, state.activeWorkflowSection);
-    const changed = state.activeWorkflowSection !== next;
-    const wasOpen = Boolean(state.openSections[next]);
-    commands.activateWorkflowSection(next);
-    if (!wasOpen) {
-      effects.persistUiState();
-    }
-    effects.renderSections({ includeMap: changed, includePlots });
-
-    if (scroll) {
-      document.querySelector(`[data-workflow-section="${next}"]`)?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
+      const collapseLocked = section === "region" && state.regionDraft.active;
+      if (toggle?.tagName === "BUTTON") {
+        toggle.disabled = collapseLocked;
+      }
+      toggle?.setAttribute("aria-disabled", String(collapseLocked));
     }
   }
 
@@ -93,17 +66,21 @@ export function createWorkflowPanel({
   function toggleSection(section, effects) {
     const state = store.getSnapshot();
     const next = normalizeSection(section, state.activeWorkflowSection);
-    commands.toggleWorkflowSection(next);
+    const result = commands.toggleWorkflowSection(next);
+    if (result?.blocked) {
+      return false;
+    }
     effects.persistUiState();
     effects.renderSections({
-      includeMap: true,
+      includeMap: false,
       includePlots: isTemporalSection(next),
     });
+    return true;
   }
 
   /**
    * @param {{
-   *   renderSections: (options: { includeMap: boolean, includePlots: boolean }) => void,
+   *   renderChrome: () => unknown,
    * }} effects
    */
   function syncActiveFromScroll(effects) {
@@ -130,10 +107,7 @@ export function createWorkflowPanel({
 
     if (bestSection !== state.activeWorkflowSection) {
       commands.setActiveWorkflowSection(bestSection);
-      effects.renderSections({
-        includeMap: true,
-        includePlots: isTemporalSection(bestSection),
-      });
+      effects.renderChrome();
     }
   }
 
@@ -141,6 +115,7 @@ export function createWorkflowPanel({
    * @param {{
    *   persistUiState: () => void,
    *   renderSections: (options: { includeMap: boolean, includePlots: boolean }) => void,
+   *   renderChrome: () => unknown,
    * }} effects
    * @returns {boolean}
    */
@@ -166,9 +141,6 @@ export function createWorkflowPanel({
 
   return {
     renderChrome,
-    activateSection,
-    toggleSection,
-    syncActiveFromScroll,
     wire,
   };
 }

@@ -7,6 +7,7 @@ import {
 } from "./model.js";
 import { placeAnchoredPopover } from "../../shared/ui/anchored-popover.js";
 import { describeControl } from "../../shared/ui/control-tooltip.js";
+import { wireDualRangeController } from "../../shared/ui/dual-range-controller.js";
 
 
 const QC_PLOT_DOWNLOADS = Object.freeze({
@@ -25,18 +26,6 @@ const QC_METRIC_DESCRIPTIONS = Object.freeze({
   t_peak: "Response onset-to-peak time (t_peak, ms)",
   t_half: "Response peak-to-half-decay time (t_half, ms)",
 });
-
-const RANGE_ADJUSTMENT_KEYS = new Set([
-  "ArrowDown",
-  "ArrowLeft",
-  "ArrowRight",
-  "ArrowUp",
-  "End",
-  "Home",
-  "PageDown",
-  "PageUp",
-]);
-
 
 /** @param {{ key: string, label: string }} item */
 function metricOptionDescription(item) {
@@ -522,7 +511,7 @@ export function createQualityControlPanel({ document }) {
    *   onColorInput?: (handle: "lower" | "upper") => void,
    *   onQcInput?: (handle: "lower" | "upper") => void,
    *   onRangeInteractionStart?: (kind: "color" | "threshold") => void,
-   *   onRangeInteractionEnd?: () => void,
+   *   onRangeInteractionEnd?: (kind: "color" | "threshold", options: { canceled: boolean }) => void,
    *   onDownload?: (format: "svg" | "png") => unknown,
    * }} effects
    */
@@ -598,133 +587,85 @@ export function createQualityControlPanel({ document }) {
       options[nextIndex]?.focus();
       options[nextIndex]?.scrollIntoView({ block: "nearest" });
     });
-    document.addEventListener("click", (event) => {
-      if (!document.getElementById("blueprint-picker")?.contains(/** @type {Node} */ (event.target))) {
-        onCloseMenu();
+    document.addEventListener("pointerdown", (event) => {
+      const picker = document.getElementById("blueprint-picker");
+      const menu = document.getElementById("blueprint-menu");
+      if (
+        !menu
+        || menu.classList.contains("hidden")
+        || picker?.contains(/** @type {Node} */ (event.target))
+      ) {
+        return;
       }
-    });
+      onCloseMenu();
+      event.preventDefault();
+      event.stopPropagation();
+    }, true);
     document.addEventListener("scroll", positionMenu, true);
     document.defaultView?.addEventListener("resize", positionMenu);
 
-    /** @type {{
-     *   kind: "color" | "threshold",
-     *   modality: string,
-     *   input: Element,
-     * } | null} */
-    let activeRangeInteraction = null;
-
-    function startRangeInteraction(kind, modality, input) {
-      if (
-        activeRangeInteraction?.kind === kind
-        && activeRangeInteraction.modality === modality
-        && activeRangeInteraction.input === input
-      ) {
-        return;
+    function bindRangePair({
+      kind,
+      containerSelector,
+      lowerId,
+      upperId,
+      onInput,
+    }) {
+      const container = /** @type {HTMLElement | null} */ (
+        document.querySelector(containerSelector)
+      );
+      const lowerInput = /** @type {HTMLInputElement | null} */ (
+        document.getElementById(lowerId)
+      );
+      const upperInput = /** @type {HTMLInputElement | null} */ (
+        document.getElementById(upperId)
+      );
+      if (!container || !lowerInput || !upperInput) {
+        return false;
       }
-      activeRangeInteraction = { kind, modality, input };
-      onRangeInteractionStart(kind);
+      wireDualRangeController({
+        container,
+        lowerInput,
+        upperInput,
+        onInput(handle) {
+          onInput(handle);
+        },
+        onInteractionStart() {
+          onRangeInteractionStart(kind);
+        },
+        onInteractionEnd({ canceled }) {
+          onRangeInteractionEnd(kind, { canceled });
+        },
+      });
+      return true;
     }
 
-    function endRangeInteraction({ modality = null, input = null } = {}) {
-      if (!activeRangeInteraction) {
-        return;
-      }
-      if (modality && activeRangeInteraction.modality !== modality) {
-        return;
-      }
-      if (input && activeRangeInteraction.input !== input) {
-        return;
-      }
-      activeRangeInteraction = null;
-      onRangeInteractionEnd();
-    }
-
-    function bindRangeInput(inputId, kind, handle, onInput) {
-      const input = document.getElementById(inputId);
-      if (!input) {
-        return;
-      }
-      input.addEventListener("pointerdown", () => {
-        startRangeInteraction(kind, "pointer", input);
-      });
-      input.addEventListener("input", () => {
-        if (
-          activeRangeInteraction?.kind !== kind
-          || activeRangeInteraction.input !== input
-        ) {
-          startRangeInteraction(kind, "input", input);
-        }
-        onInput(handle);
-      });
-      input.addEventListener("keydown", (event) => {
-        if (RANGE_ADJUSTMENT_KEYS.has(event.key)) {
-          startRangeInteraction(kind, "keyboard", input);
-        }
-        if (event.key === "Escape") {
-          endRangeInteraction({ input });
-        }
-      });
-      input.addEventListener("keyup", (event) => {
-        if (RANGE_ADJUSTMENT_KEYS.has(event.key)) {
-          endRangeInteraction({ modality: "keyboard", input });
-        }
-      });
-      input.addEventListener("change", () => {
-        if (activeRangeInteraction?.modality !== "keyboard") {
-          endRangeInteraction({ input });
-        }
-      });
-      input.addEventListener("pointercancel", () => endRangeInteraction({
-        modality: "pointer",
-        input,
-      }));
-      input.addEventListener("lostpointercapture", () => endRangeInteraction({
-        modality: "pointer",
-        input,
-      }));
-      input.addEventListener("blur", () => endRangeInteraction({ input }));
-    }
-
-    bindRangeInput("qc-color-lower-input", "color", "lower", onColorInput);
-    bindRangeInput("qc-color-upper-input", "color", "upper", onColorInput);
-    bindRangeInput("qc-range-lower-input", "threshold", "lower", onQcInput);
-    bindRangeInput("qc-range-upper-input", "threshold", "upper", onQcInput);
-
-    document.addEventListener("pointerdown", (event) => {
-      if (
-        activeRangeInteraction
-        && event.target !== activeRangeInteraction.input
-      ) {
-        endRangeInteraction();
-      }
-    }, true);
-    document.addEventListener("pointerup", () => endRangeInteraction({
-      modality: "pointer",
-    }), true);
-    document.addEventListener("pointercancel", () => endRangeInteraction({
-      modality: "pointer",
-    }), true);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") {
-        endRangeInteraction();
-      }
+    bindRangePair({
+      kind: "color",
+      containerSelector: "#blueprint-color-range .qc-range-slider",
+      lowerId: "qc-color-lower-input",
+      upperId: "qc-color-upper-input",
+      onInput: onColorInput,
     });
-    document.defaultView?.addEventListener("blur", () => endRangeInteraction());
+    bindRangePair({
+      kind: "threshold",
+      containerSelector: "#blueprint-qc-range .qc-range-slider",
+      lowerId: "qc-range-lower-input",
+      upperId: "qc-range-upper-input",
+      onInput: onQcInput,
+    });
     for (const [format, buttonId] of Object.entries(QC_PLOT_DOWNLOADS)) {
       const button = document.getElementById(buttonId);
       if (!button) {
         continue;
       }
       button.addEventListener("click", () => onDownload(/** @type {"svg" | "png"} */ (format)));
-      button.dataset.downloadWired = "true";
     }
     setDownloadEnabled(false);
     return true;
   }
 
   return {
-    closeMenu,
-    toggleMenu,
     renderMetricControl,
     updateMetricThreshold,
     renderQcRange,

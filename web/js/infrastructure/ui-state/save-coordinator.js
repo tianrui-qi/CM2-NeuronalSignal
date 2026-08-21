@@ -4,7 +4,7 @@ import { UiStateClientErrorCode } from "../errors.js";
 
 export const UI_STATE_SAVE_DEBOUNCE_MS = 250;
 export const UI_STATE_SAVE_RETRY_MS = 1000;
-export const UI_STATE_LOCAL_STORAGE_PREFIX = "cm2.ui-state:v1";
+export const UI_STATE_LOCAL_STORAGE_PREFIX = "cm2.ui-state";
 
 function defaultSetTimeout(callback, delay) {
   return globalThis.setTimeout(callback, delay);
@@ -393,9 +393,7 @@ export function createUiStateSaveCoordinator({
   return Object.freeze({
     canRestoreDefault,
     clearAll,
-    flush,
     load,
-    mode: () => mode,
     restoreDefault,
     save,
     sendPendingBeacon,

@@ -71,7 +71,7 @@ export function createRoiBoxEditor({
       : null;
 
     const dialog = document.createElement("dialog");
-    dialog.className = "confirmation-dialog roi-box-editor";
+    dialog.className = "confirmation-dialog";
     dialog.setAttribute("aria-modal", "true");
     dialog.setAttribute("aria-labelledby", titleId);
     dialog.setAttribute("aria-describedby", descriptionId);
@@ -98,14 +98,12 @@ export function createRoiBoxEditor({
 
     const title = document.createElement("h4");
     title.id = titleId;
-    title.className = "confirmation-dialog-title roi-box-editor-title";
+    title.className = "confirmation-dialog-title";
     title.textContent = titleText;
 
     const description = document.createElement("p");
     description.id = descriptionId;
-    description.className = (
-      "confirmation-dialog-description roi-box-editor-description"
-    );
+    description.className = "confirmation-dialog-description";
     description.textContent = onClear
       ? (
         "Set the box bounds in image pixels. "
@@ -145,11 +143,11 @@ export function createRoiBoxEditor({
     }
 
     const actions = document.createElement("div");
-    actions.className = "confirmation-dialog-actions roi-box-actions";
+    actions.className = "confirmation-dialog-actions";
 
     const cancelButton = document.createElement("button");
     cancelButton.type = "button";
-    cancelButton.className = "mini-btn roi-box-cancel";
+    cancelButton.className = "mini-btn";
     cancelButton.textContent = "Cancel";
     cancelButton.setAttribute("aria-label", `Cancel ${titleText}`);
     cancelButton.dataset.controlDescription = "Close this dialog without saving changes";
@@ -157,7 +155,7 @@ export function createRoiBoxEditor({
 
     const applyButton = document.createElement("button");
     applyButton.type = "submit";
-    applyButton.className = "mini-btn roi-box-save";
+    applyButton.className = "mini-btn";
     applyButton.textContent = "Save";
     applyButton.setAttribute("aria-label", `Save ${titleText}`);
     applyButton.dataset.controlDescription = onClear
@@ -220,5 +218,5 @@ export function createRoiBoxEditor({
     return true;
   }
 
-  return Object.freeze({ close, open });
+  return Object.freeze({ open });
 }

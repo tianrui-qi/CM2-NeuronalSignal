@@ -45,7 +45,7 @@ def _iter_patch_results(dview: Any, args_in: list[tuple[Any, ...]]) -> Iterable[
 
 
 def _deduplicate_patch(fff: list[Any], patch_id: int, patch_center: tuple[float, ...], patch_centers: list[tuple[float, ...]]) -> list[Any]:
-    idx_, shapes, a_mat, _, c_mat, _, s_mat, bl, c1, neurons_sn, g, _, _, yra = fff
+    _, shapes, a_mat, _, c_mat, _, s_mat, bl, c1, neurons_sn, g, _, _, yra = fff
     a_mat = a_mat.tocsc()
     keep: list[int] = []
     centers = np.asarray(patch_centers)

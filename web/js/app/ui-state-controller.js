@@ -24,7 +24,6 @@
  *   persistence: {
  *     save: () => boolean,
  *     load: () => Promise<Record<string, string>>,
- *     flush: (options?: { keepalive?: boolean }) => Promise<void>,
  *     sendPendingBeacon: () => void,
  *     clearAll: () => boolean,
  *     restoreDefault: () => boolean,
@@ -74,7 +73,6 @@ export function createUiStateController({
     serialize,
     save: persistence.save,
     load: persistence.load,
-    flush: persistence.flush,
     restoreDefault: persistence.restoreDefault,
     sendPendingBeacon: persistence.sendPendingBeacon,
   });

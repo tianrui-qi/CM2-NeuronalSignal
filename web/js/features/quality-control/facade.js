@@ -42,6 +42,13 @@ export function createQualityControlFeature({
   let effects = null;
   /** @type {"color" | "threshold" | null} */
   let activeRangePreviewKind = null;
+  /** @type {null | {
+   *   kind: "color" | "threshold",
+   *   metricKey: string,
+   *   startRange: { lower: number | null, upper: number | null },
+   *   previewRange: { lower: number | null, upper: number | null },
+   * }} */
+  let rangeInteraction = null;
 
   const getState = () => store.getSnapshot();
 
@@ -295,9 +302,12 @@ export function createQualityControlFeature({
       : panel.readColorSliderValues();
     const presentation = buildMetricPresentation(spec);
     const domain = presentation.interactionDomain;
-    const currentRange = allowUnbounded
-      ? qcRange(spec.key)
-      : colorRange(spec.key);
+    const currentRange = rangeInteraction?.metricKey === spec.key
+      && rangeInteraction.kind === (allowUnbounded ? "threshold" : "color")
+      ? rangeInteraction.previewRange
+      : allowUnbounded
+        ? qcRange(spec.key)
+        : colorRange(spec.key);
     const range = model.updateRawRangeFromSlider(
       currentRange,
       changedHandle,
@@ -339,53 +349,126 @@ export function createQualityControlFeature({
     panel.hideHistogramRangePreview();
   }
 
+  /** @param {"color" | "threshold"} kind */
+  function beginRangeInteraction(kind) {
+    const spec = activeSpec();
+    if (!spec) {
+      return false;
+    }
+    const range = kind === "threshold" ? qcRange(spec.key) : colorRange(spec.key);
+    rangeInteraction = {
+      kind,
+      metricKey: spec.key,
+      startRange: { ...range },
+      previewRange: { ...range },
+    };
+    showRangePreview(kind);
+    return true;
+  }
+
+  /**
+   * @param {"color" | "threshold"} kind
+   * @param {{ canceled: boolean }} options
+   */
+  function finishRangeInteraction(kind, { canceled }) {
+    const interaction = rangeInteraction;
+    rangeInteraction = null;
+    hideRangePreview();
+    const spec = activeSpec();
+    if (
+      !interaction
+      || !spec
+      || interaction.kind !== kind
+      || interaction.metricKey !== spec.key
+    ) {
+      return false;
+    }
+    const { startRange, previewRange } = interaction;
+    const changed = (
+      previewRange.lower !== startRange.lower
+      || previewRange.upper !== startRange.upper
+    );
+    const domain = buildMetricPresentation(spec).interactionDomain;
+    if (canceled || !changed) {
+      if (kind === "threshold") {
+        const storedRange = qcRange(spec.key);
+        panel.renderQcRange({ range: storedRange, domain });
+        panel.updateMetricThreshold({
+          key: spec.key,
+          ...metricThresholdPresentation(spec, storedRange, domain.step),
+        });
+      } else {
+        panel.renderColorRange({ range: colorRange(spec.key), domain });
+      }
+      return false;
+    }
+
+    const installed = requireEffects();
+    if (kind === "threshold") {
+      commands.setQcRange(spec.key, previewRange);
+    } else {
+      commands.setBlueprintColorRange(spec.key, {
+        lower: /** @type {number} */ (previewRange.lower),
+        upper: /** @type {number} */ (previewRange.upper),
+      });
+    }
+    installed.persistUiState();
+    renderStats();
+    if (kind === "threshold") {
+      const storedRange = qcRange(spec.key);
+      panel.updateMetricThreshold({
+        key: spec.key,
+        ...metricThresholdPresentation(spec, storedRange, domain.step),
+      });
+      installed.renderRoiWorkflowPanel();
+      installed.renderRegionList();
+      installed.updatePlots();
+    }
+    installed.renderMap();
+    return true;
+  }
+
   /** @param {"lower" | "upper"} changedHandle */
   function updateColorRange(changedHandle) {
     const next = rangeFromSliderInputs(changedHandle, false);
-    if (!next) {
+    if (!next || rangeInteraction?.kind !== "color") {
       return;
     }
-    commands.setBlueprintColorRange(
-      next.spec.key,
-      model.normalizeBlueprintColorRange(getState(), next.spec, next.range),
+    const previewRange = model.normalizeBlueprintColorRange(
+      getState(),
+      next.spec,
+      next.range,
     );
+    rangeInteraction.previewRange = { ...previewRange };
+    panel.renderColorRange({ range: previewRange, domain: next.domain });
     refreshRangePreview(
       "color",
-      colorRange(next.spec.key),
+      previewRange,
       next.domain,
     );
-    const installed = requireEffects();
-    installed.persistUiState();
-    renderStats();
-    installed.renderMap();
   }
 
   /** @param {"lower" | "upper"} changedHandle */
   function updateQcRange(changedHandle) {
     const next = rangeFromSliderInputs(changedHandle, true);
-    if (!next) {
+    if (!next || rangeInteraction?.kind !== "threshold") {
       return;
     }
-    commands.setQcRange(
-      next.spec.key,
-      model.normalizeQcRange(getState(), next.spec, next.range),
+    const previewRange = model.normalizeQcRange(
+      getState(),
+      next.spec,
+      next.range,
     );
-    const installed = requireEffects();
-    installed.persistUiState();
-    const currentRange = qcRange(next.spec.key);
-    refreshRangePreview("threshold", currentRange, next.domain);
+    rangeInteraction.previewRange = { ...previewRange };
+    refreshRangePreview("threshold", previewRange, next.domain);
     panel.renderQcRange({
-      range: currentRange,
+      range: previewRange,
       domain: next.domain,
     });
     panel.updateMetricThreshold({
       key: next.spec.key,
-      ...metricThresholdPresentation(next.spec, currentRange, next.domain.step),
+      ...metricThresholdPresentation(next.spec, previewRange, next.domain.step),
     });
-    installed.renderRoiWorkflowPanel();
-    installed.renderRegionList();
-    installed.renderMap();
-    installed.updatePlots();
   }
 
   /** @param {"svg" | "png"} format */
@@ -448,12 +531,10 @@ export function createQualityControlFeature({
   function wire(nextEffects) {
     effects = nextEffects;
     return panel.wire({
-      onToggleMenu: panel.toggleMenu,
-      onCloseMenu: panel.closeMenu,
       onColorInput: updateColorRange,
       onQcInput: updateQcRange,
-      onRangeInteractionStart: showRangePreview,
-      onRangeInteractionEnd: hideRangePreview,
+      onRangeInteractionStart: beginRangeInteraction,
+      onRangeInteractionEnd: finishRangeInteraction,
       onDownload: (format) => {
         void downloadPlot(format);
       },
@@ -468,6 +549,8 @@ export function createQualityControlFeature({
     colorRange,
     ensureValidMetric,
     ensureValidRanges,
+    hasPinnedInspector: histogram.hasPinnedInspector,
+    dismissPinnedInspector: histogram.dismissPinnedInspector,
     pointPassesMetricFilters,
     renderedSpec,
     renderMetricControl,

@@ -1,19 +1,206 @@
-@media (max-width: 800px) {
-  .status-banner {
-    top: 12px;
-    left: 12px;
+@media (hover: hover) {
+  .mini-btn.workflow-state-action:not(:disabled):hover {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      linear-gradient(var(--surface-interactive), var(--surface-interactive)),
+      var(--surface-background);
   }
 
-  .overlay-stack {
-    top: auto;
-    left: 12px;
-    right: 12px;
-    bottom: 76px;
-    width: auto;
-    max-height: 72vh;
+  .overlay-resizer:hover::after {
+    opacity: 1;
+  }
+
+  .responsive-sheet-handle:hover .responsive-sheet-grabber {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      linear-gradient(var(--surface-interactive), var(--surface-interactive)),
+      var(--surface-background);
+  }
+
+  .workflow-section-header:hover {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      var(--surface-interactive);
+  }
+}
+
+@media (any-pointer: coarse) {
+  button,
+  [role="button"],
+  input[type="button"],
+  input[type="checkbox"],
+  input[type="radio"] {
+    touch-action: manipulation;
   }
 
   .overlay-resizer {
-    display: none;
+    right: -22px;
+    width: 44px;
+  }
+
+  .background-range-slider::before,
+  .qc-range-slider::before,
+  .heatmap-colorbar-control::before {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    top: calc((var(--slider-layout-height) - var(--slider-input-height)) / 2);
+    right: 0;
+    left: 0;
+    height: var(--slider-input-height);
+    pointer-events: auto;
+  }
+
+  .trace-deselect-btn {
+    align-items: flex-end;
+    justify-content: flex-end;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .trace-deselect-btn > .roi-row-action-visual {
+    flex: 0 0 auto;
+    width: var(--inline-action-size);
+    height: var(--inline-action-size);
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius);
+    background: var(--surface-interactive);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24), var(--shadow-control);
+  }
+
+  .trace-deselect-btn:not(:disabled):active {
+    background: transparent;
+  }
+
+  .trace-deselect-btn:not(:disabled):active > .roi-row-action-visual {
+    background:
+      linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
+      var(--surface-interactive);
+  }
+
+  .trace-deselect-btn:focus-visible {
+    outline: 0;
+  }
+
+  .trace-deselect-btn:focus-visible > .roi-row-action-visual {
+    outline: 2px solid var(--accent-mint);
+    outline-offset: 1px;
+  }
+}
+
+@media (any-pointer: coarse) and (hover: hover) {
+  .trace-deselect-btn:not(:disabled):hover {
+    background: transparent;
+  }
+
+  .trace-deselect-btn:not(:disabled):hover > .roi-row-action-visual {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      var(--surface-interactive);
+  }
+}
+
+.overlay-resizer {
+  display: none;
+}
+
+.overlay-stack[data-shell-layout="wide"] .workflow-panel-content {
+  min-height: calc(100% - var(--ui-spacing) - var(--ui-spacing));
+  justify-content: flex-end;
+}
+
+.overlay-stack[data-shell-layout="wide"] .overlay-resizer {
+  display: block;
+}
+
+html[data-shell-layout="bottom"] .status-banner {
+  top: calc(
+    var(--visual-viewport-offset-top, 0px)
+    + env(safe-area-inset-top, 0px)
+    + var(--ui-spacing)
+  );
+  right: calc(env(safe-area-inset-right, 0px) + var(--ui-spacing));
+  left: calc(env(safe-area-inset-left, 0px) + var(--ui-spacing));
+  max-width: calc(
+    100vw
+    - env(safe-area-inset-left, 0px)
+    - env(safe-area-inset-right, 0px)
+    - var(--ui-spacing)
+    - var(--ui-spacing)
+  );
+}
+
+.overlay-stack[data-shell-layout="bottom"] {
+  --sheet-available-size: max(
+    0px,
+    calc(
+      min(100dvh, var(--visual-viewport-height, 100dvh))
+      - env(safe-area-inset-top, 0px)
+      - env(safe-area-inset-bottom, 0px)
+      - var(--ui-spacing)
+      - var(--ui-spacing)
+    )
+  );
+  top: auto;
+  right: calc(env(safe-area-inset-right, 0px) + var(--ui-spacing));
+  bottom: calc(
+    var(--visual-viewport-bottom-offset, 0px)
+    + env(safe-area-inset-bottom, 0px)
+    + var(--ui-spacing)
+  );
+  left: calc(env(safe-area-inset-left, 0px) + var(--ui-spacing));
+  width: auto !important;
+  height: var(--sheet-middle-size, clamp(320px, 45dvh, 520px));
+  row-gap: var(--ui-spacing);
+  max-height: calc(
+    100vh
+    - env(safe-area-inset-top, 0px)
+    - env(safe-area-inset-bottom, 0px)
+    - var(--ui-spacing)
+    - var(--ui-spacing)
+  );
+  max-height: var(--sheet-available-size);
+}
+
+.overlay-stack[data-shell-layout="bottom"][data-sheet-detent="full"] {
+  top: calc(
+    var(--visual-viewport-offset-top, 0px)
+    + env(safe-area-inset-top, 0px)
+    + var(--ui-spacing)
+  );
+  right: calc(env(safe-area-inset-right, 0px) + var(--ui-spacing));
+  bottom: auto;
+  left: calc(env(safe-area-inset-left, 0px) + var(--ui-spacing));
+  height: var(--sheet-available-size);
+  max-height: var(--sheet-available-size);
+}
+
+.overlay-stack[data-shell-layout="bottom"][data-shell-dragging="true"] {
+  top: auto;
+  bottom: calc(
+    var(--visual-viewport-bottom-offset, 0px)
+    + env(safe-area-inset-bottom, 0px)
+    + var(--ui-spacing)
+  );
+  height: var(--sheet-drag-size, clamp(320px, 45dvh, 520px));
+}
+
+.overlay-stack[data-shell-layout="bottom"] .responsive-sheet-handle {
+  display: flex;
+}
+
+.overlay-stack[data-shell-layout="bottom"] .workflow-panel-content {
+  margin-block: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-stack,
+  .overlay-resizer::after,
+  .responsive-sheet-grabber {
+    transition: none;
   }
 }

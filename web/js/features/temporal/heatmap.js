@@ -8,6 +8,8 @@ import {
   heatmapSliderValueToValue,
   heatmapValueToSliderValue,
 } from "./model.js";
+import { wireDualRangeController } from "../../shared/ui/dual-range-controller.js";
+import { wireConfirmedBlankTap } from "../../shared/ui/confirmed-tap.js";
 
 
 export const HEATMAP_PLOT_MARGIN = Object.freeze({ l: 0, r: 0, t: 0, b: 0 });
@@ -154,11 +156,18 @@ export function buildHeatmapPlotDescriptor({
         range: [0, Math.max(state.meta.trace_length - 1, 1)],
         fixedrange: true,
       },
-      yaxis: { visible: false, autorange: "reversed" },
+      yaxis: { visible: false, autorange: "reversed", fixedrange: true },
+      dragmode: false,
       shapes,
       height: plotHeight,
     },
-    config: { responsive: true, displaylogo: false, displayModeBar: false },
+    config: {
+      responsive: false,
+      displaylogo: false,
+      displayModeBar: false,
+      doubleClick: false,
+      scrollZoom: false,
+    },
   };
 }
 
@@ -296,15 +305,106 @@ export function buildHeatmapExportLayout(
  *     restyle: (plot: HTMLElement, update: Record<string, any>) => unknown,
  *   },
  *   setDownloadEnabled?: (enabled: boolean) => void,
- *   onRangeChange?: (sourceKey: string, range: { min: number, max: number }) => void,
+ *   onRangeCommit?: (sourceKey: string, range: { min: number, max: number }) => void,
+ *   onInspectorPinned?: () => unknown,
  * }} dependencies
  */
 export function createTemporalHeatmap({
   document,
   plotly,
   setDownloadEnabled = () => {},
-  onRangeChange = () => {},
+  onRangeCommit = () => {},
+  onInspectorPinned = () => {},
 }) {
+  let renderRevision = 0;
+  let colorbarController = null;
+
+  function getTapInspector() {
+    const panel = document.querySelector(".heatmap-plot-panel");
+    if (!panel) {
+      return null;
+    }
+    let inspector = /** @type {HTMLElement | null} */ (
+      panel.querySelector(".heatmap-tap-inspector")
+    );
+    if (!inspector) {
+      inspector = document.createElement("div");
+      inspector.className = "heatmap-tap-inspector temporal-inspector hidden";
+      inspector.setAttribute("role", "status");
+      inspector.setAttribute("aria-live", "polite");
+      panel.appendChild(inspector);
+    }
+    return inspector;
+  }
+
+  function hideTapInspector() {
+    const inspector = document.querySelector(".heatmap-tap-inspector");
+    const wasVisible = Boolean(inspector && !inspector.classList.contains("hidden"));
+    inspector?.classList.add("hidden");
+    if (inspector) {
+      inspector.textContent = "";
+    }
+    return wasVisible;
+  }
+
+  document.querySelector(".heatmap-plot-panel")?.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest("#c-heatmap-plot, button, input, [role='button']")) {
+        hideTapInspector();
+      }
+    },
+  );
+
+  /** @param {Cm2PlotElement} plot */
+  function detachTapInspector(plot) {
+    if (plot.__cm2HeatmapTapHandler && typeof plot.removeListener === "function") {
+      plot.removeListener("plotly_click", plot.__cm2HeatmapTapHandler);
+    }
+    plot.__cm2HeatmapTapSession?.destroy();
+    delete plot.__cm2HeatmapTapHandler;
+    delete plot.__cm2HeatmapTapSession;
+  }
+
+  /**
+   * @param {Cm2PlotElement} plot
+   * @param {string} sourceKey
+   * @param {readonly number[]} neuronIds
+   */
+  function attachTapInspector(plot, sourceKey, neuronIds) {
+    detachTapInspector(plot);
+    plot.__cm2HeatmapTapHandler = (event) => {
+      plot.__cm2HeatmapTapSession?.claim();
+      const point = event?.points?.[0];
+      const rowIndex = Number(point?.pointNumber?.[0] ?? point?.y);
+      const neuronId = neuronIds[Math.round(rowIndex)];
+      const frame = Number(point?.x);
+      const value = Number(point?.z);
+      const inspector = getTapInspector();
+      if (
+        !inspector
+        || !Number.isFinite(neuronId)
+        || !Number.isFinite(frame)
+        || !Number.isFinite(value)
+      ) {
+        hideTapInspector();
+        return;
+      }
+      inspector.textContent = (
+        `Neuron ${neuronId}; frame ${Math.round(frame)}; value `
+        + formatHeatmapColorbarValue(sourceKey, value)
+      );
+      inspector.classList.remove("hidden");
+      onInspectorPinned();
+    };
+    plot.__cm2HeatmapTapSession = wireConfirmedBlankTap({
+      element: plot,
+      onBlankTap: hideTapInspector,
+    });
+    plot.on("plotly_click", plot.__cm2HeatmapTapHandler);
+  }
+
   /** @param {string} tag @param {string} className */
   function createElement(tag, className = "") {
     const element = document.createElement(tag);
@@ -318,8 +418,16 @@ export function createTemporalHeatmap({
    * @param {number} zMin
    * @param {number} zMax
    * @param {{ min: number, max: number }} activeRange
+   * @param {{ forceInputValues?: boolean }} [options]
    */
-  function updateColorbarState(colorbar, sourceKey, zMin, zMax, activeRange) {
+  function updateColorbarState(
+    colorbar,
+    sourceKey,
+    zMin,
+    zMax,
+    activeRange,
+    { forceInputValues = false } = {},
+  ) {
     const rangeState = { heatmapRangeBySource: { [String(sourceKey)]: activeRange } };
     const range = getHeatmapRangeForSource(rangeState, sourceKey, zMin, zMax);
     const minFraction = clamp01((range.min - zMin) / (zMax - zMin));
@@ -336,7 +444,7 @@ export function createTemporalHeatmap({
     const minInput = /** @type {HTMLInputElement | null} */ (
       colorbar.querySelector(".heatmap-colorbar-input-min")
     );
-    if (minInput && document.activeElement !== minInput) {
+    if (minInput && (forceInputValues || document.activeElement !== minInput)) {
       minInput.value = String(heatmapValueToSliderValue(
         sourceKey,
         range.min,
@@ -351,7 +459,7 @@ export function createTemporalHeatmap({
     const maxInput = /** @type {HTMLInputElement | null} */ (
       colorbar.querySelector(".heatmap-colorbar-input-max")
     );
-    if (maxInput && document.activeElement !== maxInput) {
+    if (maxInput && (forceInputValues || document.activeElement !== maxInput)) {
       maxInput.value = String(heatmapValueToSliderValue(
         sourceKey,
         range.max,
@@ -410,6 +518,8 @@ export function createTemporalHeatmap({
     activeRange = null,
     plotId = "c-heatmap-plot",
   }) {
+    colorbarController?.destroy();
+    colorbarController = null;
     const colorbar = /** @type {HTMLElement | null} */ (
       document.getElementById("heatmap-colorbar")
     );
@@ -427,6 +537,8 @@ export function createTemporalHeatmap({
     const numericMax = /** @type {number} */ (zMax);
     let currentRange = activeRange
       ?? getHeatmapRangeForSource(state, sourceKey, numericMin, numericMax);
+    /** @type {{ min: number, max: number } | null} */
+    let interactionStartRange = null;
     const row = createElement("div", "heatmap-colorbar-row");
     const rangeContainer = createElement("div", "heatmap-colorbar-range");
     const labels = createElement("div", "heatmap-colorbar-labels");
@@ -501,35 +613,60 @@ export function createTemporalHeatmap({
         return;
       }
       currentRange = nextRange;
-      onRangeChange(sourceKey, nextRange);
       updateColorbarState(
         colorbar,
         sourceKey,
         numericMin,
         numericMax,
         currentRange,
+        { forceInputValues: true },
       );
       updatePlotRange(plotId, currentRange);
     };
-    minInput.addEventListener("input", () => {
-      updateRange({
-        min: heatmapSliderValueToValue(
+    colorbarController = wireDualRangeController({
+      container: rangeControl,
+      lowerInput: minInput,
+      upperInput: maxInput,
+      onInput(handle, value) {
+        const converted = heatmapSliderValueToValue(
           sourceKey,
-          Number(minInput.value),
+          Number(value),
           numericMin,
           numericMax,
-        ),
-      });
-    });
-    maxInput.addEventListener("input", () => {
-      updateRange({
-        max: heatmapSliderValueToValue(
-          sourceKey,
-          Number(maxInput.value),
-          numericMin,
-          numericMax,
-        ),
-      });
+        );
+        updateRange(handle === "lower" ? { min: converted } : { max: converted });
+      },
+      onInteractionStart() {
+        interactionStartRange = { ...currentRange };
+      },
+      onInteractionEnd({ canceled }) {
+        const startRange = interactionStartRange;
+        interactionStartRange = null;
+        if (!startRange) {
+          return;
+        }
+        const changed = (
+          currentRange.min !== startRange.min
+          || currentRange.max !== startRange.max
+        );
+        if (!changed) {
+          return;
+        }
+        if (canceled) {
+          currentRange = { ...startRange };
+          updateColorbarState(
+            colorbar,
+            sourceKey,
+            numericMin,
+            numericMax,
+            currentRange,
+            { forceInputValues: true },
+          );
+          updatePlotRange(plotId, currentRange);
+          return;
+        }
+        onRangeCommit(sourceKey, currentRange);
+      },
     });
     currentRange = updateColorbarState(
       colorbar,
@@ -542,9 +679,13 @@ export function createTemporalHeatmap({
   }
 
   function clearControls() {
+    renderRevision += 1;
+    colorbarController?.destroy();
+    colorbarController = null;
     const colorbar = document.getElementById("heatmap-colorbar");
     colorbar?.classList.add("hidden");
     colorbar?.replaceChildren();
+    hideTapInspector();
     setDownloadEnabled(false);
     return true;
   }
@@ -635,6 +776,7 @@ export function createTemporalHeatmap({
     pointIndexForNeuronId,
     updateColorbar = true,
   }) {
+    const revision = ++renderRevision;
     const plot = /** @type {HTMLElement & { data?: any[] } | null} */ (
       document.getElementById(plotId)
     );
@@ -652,6 +794,8 @@ export function createTemporalHeatmap({
     plot.dataset.visibleNeuronCount = String(descriptor.z.length);
     if (descriptor.empty) {
       plot.closest(".plot-panel")?.classList.toggle("is-empty", true);
+      hideTapInspector();
+      detachTapInspector(/** @type {Cm2PlotElement} */ (plot));
       plotly.purge(plot);
       plot.innerHTML = "";
       setDownloadEnabled(false);
@@ -664,7 +808,17 @@ export function createTemporalHeatmap({
     plot.closest(".plot-panel")?.classList.toggle("is-empty", false);
     setDownloadEnabled(true);
     plot.style.height = `${descriptor.plotHeight}px`;
-    plotly.react(plot, descriptor.data, descriptor.layout, descriptor.config);
+    Promise.resolve(
+      plotly.react(plot, descriptor.data, descriptor.layout, descriptor.config),
+    ).then(() => {
+      if (revision === renderRevision && plot.isConnected) {
+        attachTapInspector(
+          /** @type {Cm2PlotElement} */ (plot),
+          sourceKey,
+          neuronIds,
+        );
+      }
+    }).catch((error) => globalThis.console?.warn(error));
     if (updateColorbar) {
       renderColorbar({
         state,
@@ -680,7 +834,12 @@ export function createTemporalHeatmap({
 
   return {
     clearControls,
+    dismissPinnedInspector: hideTapInspector,
     exportImage,
+    hasPinnedInspector() {
+      const inspector = document.querySelector(".heatmap-tap-inspector");
+      return Boolean(inspector && !inspector.classList.contains("hidden"));
+    },
     render,
   };
 }

@@ -59,38 +59,75 @@ export function createRegionPanel({
    */
   function wirePreview(row, preview, { onSetPreview, onClearPreview }) {
     const setPreviewFromPointer = (event) => {
+      if (event.pointerType !== "mouse") {
+        return;
+      }
       onSetPreview({
         ...preview,
         countMode: getCountModeFromPointer(row, event.clientX),
       });
     };
-    for (const eventName of ["mouseenter", "pointerenter"]) {
-      row.addEventListener(eventName, setPreviewFromPointer);
-    }
-    for (const eventName of ["mousemove", "pointermove"]) {
-      row.addEventListener(eventName, setPreviewFromPointer);
-    }
-    for (const eventName of ["mouseleave", "pointerleave"]) {
-      row.addEventListener(eventName, () => (
-        onClearPreview({ ...preview, countMode: "qc" })
-      ));
-    }
+    row.addEventListener("pointerenter", setPreviewFromPointer);
+    row.addEventListener("pointermove", setPreviewFromPointer);
+    row.addEventListener("pointerleave", (event) => {
+      if (event.pointerType === "mouse") {
+        onClearPreview({ ...preview, countMode: "qc" });
+      }
+    });
   }
 
-  /** @param {unknown} value @param {any} preview @param {unknown} countMode */
-  function makeCountCell(value, preview, countMode) {
-    const cell = document.createElement("div");
+  /**
+   * @param {unknown} value
+   * @param {any} preview
+   * @param {unknown} countMode
+   * @param {{ onSetPreview?: (preview: any) => void, onClearPreview?: (preview: any) => void }} [handlers]
+   */
+  function makeCountCell(value, preview, countMode, handlers = {}) {
+    const interactive = Boolean(
+      Number.isFinite(value)
+      && preview
+      && typeof handlers.onSetPreview === "function"
+      && typeof handlers.onClearPreview === "function"
+    );
+    const cell = document.createElement(interactive ? "button" : "div");
     cell.className = "region-row-count";
-    cell.textContent = model.formatRegionCount(value);
-    if (Number.isFinite(value) && preview) {
+    if (interactive) {
+      cell.type = "button";
+      cell.textContent = model.formatRegionCount(value);
       cell.dataset.regionPreviewKey = model.getRegionPreviewKey(preview);
       cell.dataset.regionCountMode = model.normalizeRegionCountMode(countMode);
+      cell.setAttribute("aria-pressed", "false");
       describeControl(
         cell,
         countMode === "raw"
           ? "Preview neurons before QC"
           : "Preview neurons after QC",
       );
+      let lastPointerType = null;
+      cell.addEventListener("pointerdown", (event) => {
+        lastPointerType = event.pointerType;
+      });
+      cell.addEventListener("focus", () => {
+        if (lastPointerType === null) {
+          handlers.onSetPreview({ ...preview, countMode });
+        }
+      });
+      cell.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const canToggle = (
+          event.detail === 0
+          || lastPointerType === "touch"
+          || lastPointerType === "pen"
+        );
+        if (canToggle && cell.getAttribute("aria-pressed") === "true") {
+          handlers.onClearPreview({ ...preview, countMode });
+        } else {
+          handlers.onSetPreview({ ...preview, countMode });
+        }
+        lastPointerType = null;
+      });
+    } else {
+      cell.textContent = model.formatRegionCount(value);
     }
     return cell;
   }
@@ -101,7 +138,6 @@ export function createRegionPanel({
    *   label: string,
    *   description?: string,
    *   onClick: (trigger: HTMLButtonElement) => void,
-   *   disabled?: boolean,
    * }} options
    */
   function makeIconButton({
@@ -109,14 +145,16 @@ export function createRegionPanel({
     label,
     description,
     onClick,
-    disabled = false,
   }) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `region-row-icon mini-btn ${className}`;
     button.setAttribute("aria-label", label);
     describeControl(button, description ?? label);
-    button.disabled = disabled;
+    const visual = document.createElement("span");
+    visual.className = "region-row-icon-visual";
+    visual.setAttribute("aria-hidden", "true");
+    button.appendChild(visual);
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       onClick(button);
@@ -145,6 +183,9 @@ export function createRegionPanel({
     const activeScope = model.getActiveRegionDisplayScope(state);
     const activeKey = model.getRegionPreviewKey(activeScope);
     const activeMode = model.normalizeRegionCountMode(activeScope.countMode);
+    const pinnedPreview = model.getRegionPreview(state);
+    const pinnedKey = model.getRegionPreviewKey(pinnedPreview);
+    const pinnedMode = model.normalizeRegionCountMode(pinnedPreview?.countMode);
     const cells = /** @type {NodeListOf<HTMLElement>} */ (
       document.querySelectorAll(".region-row-count[data-region-preview-key]")
     );
@@ -153,7 +194,13 @@ export function createRegionPanel({
         cell.dataset.regionPreviewKey === activeKey
         && cell.dataset.regionCountMode === activeMode
       );
+      const isPinned = Boolean(
+        pinnedPreview
+        && cell.dataset.regionPreviewKey === pinnedKey
+        && cell.dataset.regionCountMode === pinnedMode
+      );
       cell.classList.toggle("region-row-count-active", isActive);
+      cell.setAttribute("aria-pressed", String(isPinned));
     });
   }
 
@@ -166,7 +213,8 @@ export function createRegionPanel({
    *   onSetPreview: (preview: any) => void,
    *   onClearPreview: (preview?: any) => void,
    *   onStart: () => void,
-   *   onApply: () => void,
+   *   onFinish: () => void,
+   *   onUndo: () => boolean,
    *   onCancel: () => void,
    * }} options
    */
@@ -178,7 +226,8 @@ export function createRegionPanel({
     onSetPreview,
     onClearPreview,
     onStart,
-    onApply,
+    onFinish,
+    onUndo,
     onCancel,
   }) {
     const container = document.getElementById("region-list");
@@ -186,6 +235,16 @@ export function createRegionPanel({
       return;
     }
     const polygons = model.getDisplayedRegionPolygons(state);
+    const sectionToggle = /** @type {HTMLButtonElement | null} */ (
+      document.querySelector('[data-section-toggle="region"]')
+    );
+    if (sectionToggle) {
+      sectionToggle.disabled = state.regionDraft.active;
+      sectionToggle.setAttribute(
+        "aria-disabled",
+        String(state.regionDraft.active),
+      );
+    }
     const countForPolygons = (targetPolygons, options = {}) => (
       model.countRegionNeuronsForPolygons(state, targetPolygons, {
         ...options,
@@ -212,14 +271,24 @@ export function createRegionPanel({
       pointPassesMetricFilters,
     );
     const fullFovRow = document.createElement("div");
-    fullFovRow.className = "region-row region-row-summary region-row-full-fov region-row-previewable";
+    fullFovRow.className = "region-row region-row-summary region-row-previewable";
     wirePreview(fullFovRow, fullFovPreview, previewHandlers);
     const fullFovLabel = document.createElement("div");
     fullFovLabel.className = "region-row-label";
     fullFovLabel.textContent = "Full FOV";
     fullFovRow.appendChild(fullFovLabel);
-    fullFovRow.appendChild(makeCountCell(fullFovCounts.qc, fullFovPreview, "qc"));
-    fullFovRow.appendChild(makeCountCell(fullFovCounts.raw, fullFovPreview, "raw"));
+    fullFovRow.appendChild(makeCountCell(
+      fullFovCounts.qc,
+      fullFovPreview,
+      "qc",
+      previewHandlers,
+    ));
+    fullFovRow.appendChild(makeCountCell(
+      fullFovCounts.raw,
+      fullFovPreview,
+      "raw",
+      previewHandlers,
+    ));
     fullFovRow.appendChild(document.createElement("div")).className = "region-row-action";
     container.appendChild(fullFovRow);
 
@@ -237,11 +306,13 @@ export function createRegionPanel({
         countForPolygons([polygon]),
         regionPreview,
         "raw",
+        previewHandlers,
       );
       const qcCount = makeCountCell(
         countForPolygons([polygon], { filters }),
         regionPreview,
         "qc",
+        previewHandlers,
       );
       const deleteButton = makeIconButton({
         className: "region-row-delete",
@@ -275,6 +346,7 @@ export function createRegionPanel({
       container.appendChild(row);
     });
 
+    let drawingToolbar = null;
     if (state.regionDraft.active) {
       const draftIndex = model.getCommittedRegionPolygons(state).length + 1;
       const draftPolygon = model.normalizeRegionPolygon(state.regionDraft.points);
@@ -296,24 +368,63 @@ export function createRegionPanel({
         : "-";
       const action = document.createElement("div");
       action.className = "region-row-action";
-      action.appendChild(makeIconButton({
-        className: "region-row-commit",
-        label: `Save Region ${draftIndex}`,
-        description: `Save Region ${draftIndex}`,
-        onClick: onApply,
-        disabled: !hasDraftPolygon,
-      }));
-      action.appendChild(makeIconButton({
-        className: "region-row-cancel",
-        label: `Cancel Region ${draftIndex}`,
-        description: `Discard Region ${draftIndex}`,
-        onClick: onCancel,
-      }));
       draft.appendChild(label);
       draft.appendChild(qcCount);
       draft.appendChild(rawCount);
       draft.appendChild(action);
       container.appendChild(draft);
+
+      const toolbar = document.createElement("div");
+      toolbar.className = "region-drawing-toolbar";
+      toolbar.setAttribute("role", "toolbar");
+      toolbar.setAttribute("aria-label", `Region ${draftIndex} drawing controls`);
+      const makeDrawingButton = ({
+        className,
+        command,
+        label,
+        description,
+        disabled,
+        onClick,
+      }) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `mini-btn region-drawing-action ${className}`;
+        button.dataset.interactionCommand = command;
+        button.textContent = label;
+        button.disabled = disabled;
+        describeControl(button, description);
+        button.addEventListener("click", onClick);
+        return button;
+      };
+      toolbar.appendChild(makeDrawingButton({
+        className: "region-drawing-undo",
+        command: "region-undo",
+        label: "Undo",
+        description: `Remove the last vertex from Region ${draftIndex}`,
+        disabled: state.regionDraft.points.length === 0,
+        onClick: () => {
+          if (onUndo()) {
+            document.querySelector(".region-drawing-undo")?.focus();
+          }
+        },
+      }));
+      toolbar.appendChild(makeDrawingButton({
+        className: "region-drawing-finish",
+        command: "region-finish",
+        label: "Finish",
+        description: `Finish and save Region ${draftIndex}`,
+        disabled: !hasDraftPolygon,
+        onClick: onFinish,
+      }));
+      toolbar.appendChild(makeDrawingButton({
+        className: "region-drawing-cancel",
+        command: "region-cancel",
+        label: "Cancel",
+        description: `Discard Region ${draftIndex}`,
+        disabled: false,
+        onClick: onCancel,
+      }));
+      drawingToolbar = toolbar;
     } else {
       const nextIndex = model.getCommittedRegionPolygons(state).length + 1;
       const addRow = document.createElement("button");
@@ -339,16 +450,29 @@ export function createRegionPanel({
         pointPassesMetricFilters,
       );
       const regionAllRow = document.createElement("div");
-      regionAllRow.className = "region-row region-row-summary region-row-region-all region-row-previewable";
+      regionAllRow.className = "region-row region-row-summary region-row-previewable";
       wirePreview(regionAllRow, regionAllPreview, previewHandlers);
       const regionAllLabel = document.createElement("div");
       regionAllLabel.className = "region-row-label";
       regionAllLabel.textContent = "Region All";
       regionAllRow.appendChild(regionAllLabel);
-      regionAllRow.appendChild(makeCountCell(regionAllCounts.qc, regionAllPreview, "qc"));
-      regionAllRow.appendChild(makeCountCell(regionAllCounts.raw, regionAllPreview, "raw"));
+      regionAllRow.appendChild(makeCountCell(
+        regionAllCounts.qc,
+        regionAllPreview,
+        "qc",
+        previewHandlers,
+      ));
+      regionAllRow.appendChild(makeCountCell(
+        regionAllCounts.raw,
+        regionAllPreview,
+        "raw",
+        previewHandlers,
+      ));
       regionAllRow.appendChild(document.createElement("div")).className = "region-row-action";
       container.appendChild(regionAllRow);
+    }
+    if (drawingToolbar) {
+      container.appendChild(drawingToolbar);
     }
     updateCountHighlights(state);
   }

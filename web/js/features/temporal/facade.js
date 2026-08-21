@@ -312,11 +312,11 @@ export function createTemporalFeature({
     return selectedNeuronIds().length > 0;
   }
 
-  /** @param {string} sourceKey */
-  function renderTrace(sourceKey) {
+  /** @param {string} sourceKey @param {Record<string, any>} [state] */
+  function renderTrace(sourceKey, state = getState()) {
     return tracePlot.render({
       plotly: requireEffects().plotly,
-      state: getState(),
+      state,
       sourceKey,
       neuronIds: selectedNeuronIds(),
       modelDependencies,
@@ -397,6 +397,49 @@ export function createTemporalFeature({
           valueLabel: (value) => `${panel.formatTraceControlNumber(value)} px/1000`,
           description: "Set the vertical scale in pixels per 1,000 ΔF",
         };
+    let spacingPreviewValue = spacing.value;
+    let scalePreviewValue = scale.value;
+    let spacingStartValue = spacing.value;
+    let scaleStartValue = scale.value;
+
+    function renderScalePreview() {
+      const previewState = { ...getState() };
+      if (isDff) {
+        previewState.traceDffSpacingPercent = spacingPreviewValue;
+        previewState.traceDffPixelsPerPercent = scalePreviewValue;
+      } else {
+        previewState.traceDfSpacingRaw = spacingPreviewValue;
+        previewState.traceDfPixelsPerKiloRaw = scalePreviewValue;
+      }
+      renderTrace(sourceKey, previewState);
+    }
+
+    /** @param {"spacing" | "scale"} kind @param {boolean} canceled */
+    function finishScaleInteraction(kind, canceled) {
+      const startValue = kind === "spacing"
+        ? spacingStartValue
+        : scaleStartValue;
+      const previewValue = kind === "spacing"
+        ? spacingPreviewValue
+        : scalePreviewValue;
+      if (canceled || previewValue === startValue) {
+        return;
+      }
+      if (kind === "spacing") {
+        if (isDff) {
+          commands.setTraceDffSpacingPercent(previewValue);
+        } else {
+          commands.setTraceDfSpacingRaw(previewValue);
+        }
+      } else if (isDff) {
+        commands.setTraceDffPixelsPerPercent(previewValue);
+      } else {
+        commands.setTraceDfPixelsPerKiloRaw(previewValue);
+      }
+      requireEffects().persistUiState();
+      requireEffects().refreshMapHoverPreview();
+    }
+
     panel.renderScaleControls({
       visible: true,
       spacingValue: spacing.value,
@@ -404,24 +447,24 @@ export function createTemporalFeature({
       spacing,
       scale,
       onSpacingInput(nextValue) {
-        if (isDff) {
-          commands.setTraceDffSpacingPercent(nextValue);
-        } else {
-          commands.setTraceDfSpacingRaw(nextValue);
-        }
-        requireEffects().persistUiState();
-        renderTrace(sourceKey);
-        requireEffects().refreshMapHoverPreview();
+        spacingPreviewValue = nextValue;
+        renderScalePreview();
       },
       onScaleInput(nextValue) {
-        if (isDff) {
-          commands.setTraceDffPixelsPerPercent(nextValue);
-        } else {
-          commands.setTraceDfPixelsPerKiloRaw(nextValue);
-        }
-        requireEffects().persistUiState();
-        renderTrace(sourceKey);
-        requireEffects().refreshMapHoverPreview();
+        scalePreviewValue = nextValue;
+        renderScalePreview();
+      },
+      onSpacingInteractionStart() {
+        spacingStartValue = spacingPreviewValue;
+      },
+      onScaleInteractionStart() {
+        scaleStartValue = scalePreviewValue;
+      },
+      onSpacingInteractionEnd({ canceled }) {
+        finishScaleInteraction("spacing", canceled);
+      },
+      onScaleInteractionEnd({ canceled }) {
+        finishScaleInteraction("scale", canceled);
       },
     });
   }
@@ -581,7 +624,13 @@ export function createTemporalFeature({
    */
   function wire(nextEffects) {
     effects = nextEffects;
-    tracePlot.wire({ deselectNeuron, setHoverNeuronId });
+    tracePlot.wire({
+      deselectNeuron,
+      setHoverNeuronId,
+      onInspectorPinned() {
+        heatmap?.dismissPinnedInspector();
+      },
+    });
     if (!heatmap) {
       heatmap = createTemporalHeatmap({
         document,
@@ -601,9 +650,12 @@ export function createTemporalFeature({
         setDownloadEnabled: (enabled) => (
           panel.setDownloadEnabled(TEMPORAL_PLOT_DOWNLOADS.heatmap, enabled)
         ),
-        onRangeChange(sourceKey, range) {
+        onRangeCommit(sourceKey, range) {
           commands.setHeatmapRangeForSource(String(sourceKey), range);
           requireEffects().persistUiState();
+        },
+        onInspectorPinned() {
+          tracePlot.hideDeselectButton();
         },
       });
     }
@@ -611,12 +663,18 @@ export function createTemporalFeature({
   }
 
   return Object.freeze({
-    activePhysicalSourceKey,
     applyPersistedState,
     describeNeuronTrace,
-    ensureTraceSourceLoaded,
     ensureValidState,
     hasSelectedNeurons,
+    hasPinnedInspector() {
+      return tracePlot.hasPinnedInspector()
+        || Boolean(heatmap?.hasPinnedInspector());
+    },
+    dismissPinnedInspector() {
+      return tracePlot.dismissPinnedInspector()
+        || Boolean(heatmap?.dismissPinnedInspector());
+    },
     render,
     wire,
   });

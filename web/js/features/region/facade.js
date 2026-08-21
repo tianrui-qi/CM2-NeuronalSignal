@@ -14,6 +14,7 @@ import {
  *   beginRegionDrawing: () => unknown,
  *   cancelRegionDrawing: () => unknown,
  *   appendRegionDraftPoint: (point: { x: number, y: number }) => unknown,
+ *   undoRegionVertex: () => boolean,
  *   commitRegionPolygons: (polygons: Array<Array<{ x: number, y: number }>>) => unknown,
  *   deleteRegionAt: (index: number, polygons: Array<Array<{ x: number, y: number }>>) => unknown,
  *   setRegionPreview: (preview: unknown) => unknown,
@@ -48,7 +49,6 @@ import {
  *   document: Document,
  *   qualityControl: RegionQualityControlPort,
  *   getComputedStyle?: (element: Element) => CSSStyleDeclaration | Record<string, any>,
- *   now?: () => number,
  *   lineColor?: string,
  *   draftColor?: string,
  * }} dependencies
@@ -59,13 +59,12 @@ export function createRegionFeature({
   document,
   qualityControl,
   getComputedStyle,
-  now,
   lineColor,
   draftColor,
 }) {
   const getState = () => store.getSnapshot();
   const panel = createRegionPanel({ document, getComputedStyle });
-  const drawing = createRegionDrawingController({ document, getState, now });
+  const drawing = createRegionDrawingController({ document, getState });
   /** @type {RegionEffects | null} */
   let effects = null;
 
@@ -168,7 +167,8 @@ export function createRegionFeature({
       onSetPreview: setPreview,
       onClearPreview: clearPreview,
       onStart: startDrawing,
-      onApply: applyDrawing,
+      onFinish: finishDrawing,
+      onUndo: undoVertex,
       onCancel: cancelDrawing,
     });
   }
@@ -204,7 +204,7 @@ export function createRegionFeature({
     return true;
   }
 
-  function applyDrawing() {
+  function finishDrawing() {
     const state = getState();
     if (!state.regionDraft.active) {
       return false;
@@ -222,15 +222,29 @@ export function createRegionFeature({
     return true;
   }
 
-  function closeDraftPolygon() {
-    return applyDrawing();
-  }
-
   /** @param {{ x: number, y: number }} point */
   function addDraftPoint(point) {
     commands.appendRegionDraftPoint(point);
     renderList();
     requireEffects().renderMap();
+  }
+
+  /** @param {PointerEvent} event */
+  function addPointFromMapEvent(event) {
+    return drawing.addPointFromEvent(event);
+  }
+
+  function undoVertex() {
+    const state = getState();
+    if (!state.regionDraft.active || !state.regionDraft.points.length) {
+      return false;
+    }
+    if (!commands.undoRegionVertex()) {
+      return false;
+    }
+    renderList();
+    requireEffects().renderMap();
+    return true;
   }
 
   /** @param {number} index */
@@ -257,21 +271,23 @@ export function createRegionFeature({
     effects = nextEffects;
     return drawing.wire({
       addDraftPoint,
-      applyDrawing,
-      cancelDrawing,
-      closeDraftPolygon,
+      finishDrawing,
       mapEventToDataPoint: nextEffects.mapEventToDataPoint,
     });
   }
 
   return {
     activeDisplayScope,
+    addPointFromMapEvent,
     applyPersistedState,
     buildMapTraces,
+    cancelDrawing,
+    finishDrawing,
     isDrawing,
     pointPasses,
     pointPassesDisplayScope,
     renderList,
+    undoVertex,
     wire,
   };
 }

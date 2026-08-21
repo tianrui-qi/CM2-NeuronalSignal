@@ -15,8 +15,7 @@ import { createConfirmationDialog } from "../../shared/ui/confirmation-dialog.js
 export function createRoiPanel({ document, scheduleTimeout }) {
   const confirmationDialog = createConfirmationDialog({ document });
   let activeColorTrigger = null;
-  let colorPickerGeneration = 0;
-  let colorPickerSequence = 0;
+  let nextColorPickerId = 0;
   let outsideColorPickerListener = null;
 
   function positionColorPicker() {
@@ -49,19 +48,17 @@ export function createRoiPanel({ document, scheduleTimeout }) {
 
   /**
    * @param {{
-   *   className?: string,
+   *   className: string,
    *   label: string,
    *   description: string,
-   *   text?: string,
    *   disabled?: boolean,
    *   onClick: (trigger: HTMLButtonElement) => void,
    * }} options
    */
   function makeRowAction({
-    className = "",
+    className,
     label,
     description,
-    text = "",
     disabled = false,
     onClick,
   }) {
@@ -70,21 +67,32 @@ export function createRoiPanel({ document, scheduleTimeout }) {
     button.className = `mini-btn roi-row-action-btn ${className}`.trim();
     button.setAttribute("aria-label", label);
     button.dataset.controlDescription = description;
-    button.textContent = text;
+    const visual = document.createElement("span");
+    visual.className = "roi-row-action-visual";
+    visual.setAttribute("aria-hidden", "true");
+    button.appendChild(visual);
     button.disabled = disabled;
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (!disabled) {
-        onClick(button);
-      }
+      onClick(button);
     });
     return button;
   }
 
+  /** @param {HTMLButtonElement} button */
+  function appendSwatchVisual(button) {
+    const visual = document.createElement("span");
+    visual.className = "roi-row-swatch-visual";
+    visual.setAttribute("aria-hidden", "true");
+    const chip = document.createElement("span");
+    chip.className = "roi-row-swatch-chip";
+    visual.appendChild(chip);
+    button.appendChild(visual);
+  }
+
   function closeColorPicker({ restoreFocus = false } = {}) {
-    colorPickerGeneration += 1;
     if (outsideColorPickerListener) {
-      document.removeEventListener("click", outsideColorPickerListener);
+      document.removeEventListener("pointerdown", outsideColorPickerListener, true);
       outsideColorPickerListener = null;
     }
     stopColorPickerPlacement();
@@ -139,7 +147,7 @@ export function createRoiPanel({ document, scheduleTimeout }) {
     closeColorPicker();
 
     const popover = document.createElement("div");
-    popover.id = `roi-color-popover-${++colorPickerSequence}`;
+    popover.id = `roi-color-popover-${++nextColorPickerId}`;
     popover.className = "roi-color-popover anchored-popover floating-surface";
     popover.setAttribute("role", "menu");
     popover.setAttribute("aria-label", trigger.getAttribute("aria-label") ?? "ROI colors");
@@ -218,14 +226,16 @@ export function createRoiPanel({ document, scheduleTimeout }) {
       (focusTarget === "last" ? options.at(-1) : options[0])?.focus();
     }
 
-    const generation = ++colorPickerGeneration;
-    scheduleTimeout(() => {
-      if (generation !== colorPickerGeneration || !popover.isConnected) {
+    outsideColorPickerListener = (event) => {
+      const target = /** @type {Node} */ (event.target);
+      if (popover.contains(target) || trigger.contains(target)) {
         return;
       }
-      outsideColorPickerListener = () => closeColorPicker();
-      document.addEventListener("click", outsideColorPickerListener, { once: true });
-    }, 0);
+      closeColorPicker();
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener("pointerdown", outsideColorPickerListener, true);
   }
 
   /**
@@ -266,6 +276,7 @@ export function createRoiPanel({ document, scheduleTimeout }) {
     if (!panel) {
       return;
     }
+    closeColorPicker();
     panel.innerHTML = "";
 
     const header = document.createElement("div");
@@ -289,7 +300,7 @@ export function createRoiPanel({ document, scheduleTimeout }) {
 
       const swatch = document.createElement("button");
       swatch.type = "button";
-      swatch.className = "roi-row-swatch roi-row-color-swatch";
+      swatch.className = "roi-row-swatch";
       swatch.style.setProperty("--roi-color", rowView.color);
       swatch.setAttribute("aria-label", `Change ${rowView.name} color`);
       swatch.setAttribute("aria-haspopup", "menu");
@@ -297,6 +308,7 @@ export function createRoiPanel({ document, scheduleTimeout }) {
       swatch.dataset.controlDescription = (
         `Change ${rowView.name}'s color`
       );
+      appendSwatchVisual(swatch);
       const showColorPicker = (focusFirst = false, focusTarget = "first") => {
         openColorPicker(row, swatch, {
           palette,
@@ -435,7 +447,7 @@ export function createRoiPanel({ document, scheduleTimeout }) {
 
     const addSwatch = document.createElement("button");
     addSwatch.type = "button";
-    addSwatch.className = "roi-row-swatch roi-row-add-swatch";
+    addSwatch.className = "roi-row-swatch";
     addSwatch.style.setProperty("--roi-color", nextColor);
     addSwatch.setAttribute("aria-label", `Choose color for ${nextName}`);
     addSwatch.setAttribute("aria-haspopup", "menu");
@@ -443,6 +455,7 @@ export function createRoiPanel({ document, scheduleTimeout }) {
     addSwatch.dataset.controlDescription = (
       `Choose ${nextName}'s color`
     );
+    appendSwatchVisual(addSwatch);
     const showAddColorPicker = (focusFirst = false, focusTarget = "first") => {
       openColorPicker(addRow, addSwatch, {
         palette,

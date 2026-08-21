@@ -46,6 +46,7 @@ function jsonResponse(payload, { status = 200, headers = {} } = {}) {
 function cacheHeaders(length, contentType) {
   return {
     "Cache-Control": "no-store, no-transform",
+    "Content-Encoding": "identity",
     "Content-Length": String(length),
     "Content-Type": contentType,
   };
@@ -59,6 +60,22 @@ function cacheErrorResponse(status, headers = {}) {
       ...headers,
     },
   });
+}
+
+async function drainRequestBody(request) {
+  if (request.body === null) {
+    return;
+  }
+  const reader = request.body.getReader();
+  try {
+    while (!(await reader.read()).done) {
+      // Drain rejected writes without buffering their payloads in memory.
+    }
+  } catch {
+    // The client may disconnect before the rejected body is complete.
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 async function fetchTransport(request, env, transportFile) {
@@ -144,6 +161,7 @@ export default {
 
     if (url.pathname === "/health") {
       if (request.method !== "GET" && request.method !== "HEAD") {
+        await drainRequestBody(request);
         return new Response(null, { status: 405, headers: { Allow: "GET, HEAD" } });
       }
       const response = jsonResponse({ ok: true });
@@ -154,6 +172,7 @@ export default {
 
     if (url.pathname === "/api/ui-state") {
       if (request.method !== "GET" && request.method !== "HEAD") {
+        await drainRequestBody(request);
         return jsonResponse(
           { ok: false, error: "Default-profile writes are unavailable on the deployed site." },
           { status: 405, headers: { Allow: "GET, HEAD" } },
@@ -174,6 +193,7 @@ export default {
     const cacheRoute = CACHE_ROUTES[url.pathname];
     if (cacheRoute !== undefined) {
       if (request.method !== "GET" && request.method !== "HEAD") {
+        await drainRequestBody(request);
         return cacheErrorResponse(405, { Allow: "GET, HEAD" });
       }
       return serveCacheRoute(request, env, cacheRoute);

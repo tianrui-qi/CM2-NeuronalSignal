@@ -4,6 +4,8 @@ import * as selectors from "./selectors.js";
 import { createRenderScheduler } from "./render-scheduler.js";
 import { createUiStateController } from "./ui-state-controller.js";
 import { createViewerApplication } from "./viewer-application.js";
+import { createInteractionCommandRegistry } from "./interaction-command-registry.js";
+import { createInteractionContextStack } from "./interaction-context-stack.js";
 import { createBackgroundFeature } from "../features/background/facade.js";
 import { createQualityControlFeature } from "../features/quality-control/facade.js";
 import { createRegionFeature } from "../features/region/facade.js";
@@ -46,7 +48,6 @@ const region = createRegionFeature({
     pointPassesMetricFilters: qualityControl.pointPassesMetricFilters,
   },
   getComputedStyle: window.getComputedStyle.bind(window),
-  now: () => window.performance.now(),
 });
 const roi = createRoiFeature({
   store: viewerStore,
@@ -108,6 +109,7 @@ const map = createMapFeature({
     pointPassesDisplayScope: region.pointPassesDisplayScope,
     buildMapTraces: region.buildMapTraces,
     isDrawing: region.isDrawing,
+    addPointFromMapEvent: region.addPointFromMapEvent,
   },
   roi: {
     getById: roi.getById,
@@ -128,6 +130,20 @@ const shell = createViewerShell({
   window,
   ResizeObserver: window.ResizeObserver,
 });
+const interactionContextStack = createInteractionContextStack({
+  document,
+  isRegionDrawing: region.isDrawing,
+  hasPlotInspector: () => (
+    map.hasPinnedInspector()
+    || qualityControl.hasPinnedInspector()
+    || temporal.hasPinnedInspector()
+  ),
+});
+const interactionCommands = createInteractionCommandRegistry({
+  contextStack: interactionContextStack,
+  document,
+});
+
 
 const uiStateClient = createUiStateClient();
 /** @type {ReturnType<typeof createUiStateController>} */
@@ -157,5 +173,6 @@ const application = createViewerApplication({
   document,
   window,
   plotly,
+  interactionCommands,
 });
 application.start();

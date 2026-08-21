@@ -1,5 +1,6 @@
 import { placeAnchoredPopover } from "../../shared/ui/anchored-popover.js";
 import { describeControl } from "../../shared/ui/control-tooltip.js";
+import { wireDualRangeController } from "../../shared/ui/dual-range-controller.js";
 import { backgroundValueToPercent } from "./model.js";
 
 
@@ -25,7 +26,6 @@ function backgroundDescription(background) {
  * @param {{ document: Document }} options
  */
 export function createBackgroundPanel({ document }) {
-  let wired = false;
   let effects = {
     onSelect: /** @param {string} _key */ (_key) => {},
     onRangeInput: /** @param {"lower" | "upper"} _handle @param {string} _value */ (
@@ -33,6 +33,8 @@ export function createBackgroundPanel({ document }) {
       _value,
     ) => {},
     onRangeReset: /** @param {"lower" | "upper"} _handle */ (_handle) => {},
+    onRangeInteractionStart: () => {},
+    onRangeInteractionEnd: /** @param {{ canceled: boolean }} _options */ (_options) => {},
   };
 
   function backgroundOptions() {
@@ -205,13 +207,13 @@ export function createBackgroundPanel({ document }) {
       lowerInput,
       "Minimum displayed intensity: " + lowerText
         + (isLowerAuto ? ", automatic" : "")
-        + "; double-click or press Enter to restore its automatic value",
+        + "; double-click or double-tap the thumb to restore it",
     );
     describeControl(
       upperInput,
       "Maximum displayed intensity: " + upperText
         + (isUpperAuto ? ", automatic" : "")
-        + "; double-click or press Enter to restore its automatic value",
+        + "; double-click or double-tap the thumb to restore it",
     );
 
     const fill = document.getElementById("background-range-fill");
@@ -234,6 +236,8 @@ export function createBackgroundPanel({ document }) {
    *   onSelect?: (key: string) => void,
    *   onRangeInput?: (handle: "lower" | "upper", value: string) => void,
    *   onRangeReset?: (handle: "lower" | "upper") => void,
+   *   onRangeInteractionStart?: () => void,
+   *   onRangeInteractionEnd?: (options: { canceled: boolean }) => void,
    * }} options
    */
   function renderControl({
@@ -245,18 +249,21 @@ export function createBackgroundPanel({ document }) {
     onSelect = () => {},
     onRangeInput = () => {},
     onRangeReset = () => {},
+    onRangeInteractionStart = () => {},
+    onRangeInteractionEnd = () => {},
   }) {
-    effects = { onSelect, onRangeInput, onRangeReset };
+    effects = {
+      onSelect,
+      onRangeInput,
+      onRangeReset,
+      onRangeInteractionStart,
+      onRangeInteractionEnd,
+    };
     renderPicker({ backgrounds, activeKey });
     renderRange({ range, domain, autoRange });
   }
 
   function wire() {
-    if (wired) {
-      return false;
-    }
-    wired = true;
-
     const selectButton = document.getElementById("background-select");
     selectButton?.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -318,13 +325,20 @@ export function createBackgroundPanel({ document }) {
       options[nextIndex]?.focus();
       options[nextIndex]?.scrollIntoView({ block: "nearest" });
     });
-    document.addEventListener("click", (event) => {
-      if (!document.getElementById("background-picker")?.contains(
-        /** @type {Node} */ (event.target),
-      )) {
-        closeMenu();
+    document.addEventListener("pointerdown", (event) => {
+      const picker = document.getElementById("background-picker");
+      const menu = document.getElementById("background-menu");
+      if (
+        !menu
+        || menu.classList.contains("hidden")
+        || picker?.contains(/** @type {Node} */ (event.target))
+      ) {
+        return;
       }
-    });
+      closeMenu();
+      event.preventDefault();
+      event.stopPropagation();
+    }, true);
     document.addEventListener("scroll", positionMenu, true);
     document.defaultView?.addEventListener("resize", positionMenu);
 
@@ -339,197 +353,29 @@ export function createBackgroundPanel({ document }) {
     const upperRangeInput = /** @type {HTMLInputElement | null} */ (
       document.getElementById("background-range-upper-input")
     );
-    let activeRangePointerId = null;
-    let activeRangeHandle = null;
-    let lastPointerHandle = "upper";
-    let lastThumbPointerDown = null;
-    let lastHandledThumbDoubleClick = null;
-
-    /** @param {number} clientX */
-    const updatePointerRange = (clientX) => {
-      if (!rangeSlider || !lowerRangeInput || !upperRangeInput || !activeRangeHandle) {
-        return;
-      }
-      const rect = rangeSlider.getBoundingClientRect();
-      const min = Number(lowerRangeInput.min);
-      const max = Number(lowerRangeInput.max);
-      if (!(rect.width > 0) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-        return;
-      }
-      const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      const value = Math.round(min + fraction * (max - min));
-      effects.onRangeInput(
-        /** @type {"lower" | "upper"} */ (activeRangeHandle),
-        String(value),
-      );
-    };
-
-    rangeSlider?.addEventListener("pointerdown", (event) => {
-      if (
-        !event.isPrimary
-        || event.button !== 0
-        || !lowerRangeInput
-        || !upperRangeInput
-      ) {
-        return;
-      }
-      const rect = rangeSlider.getBoundingClientRect();
-      const min = Number(lowerRangeInput.min);
-      const max = Number(lowerRangeInput.max);
-      if (!(rect.width > 0) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-        return;
-      }
-      const valueToX = (value) => (
-        rect.left + ((Number(value) - min) / (max - min)) * rect.width
-      );
-      const thumbHandle = event.target === lowerRangeInput
-        ? "lower"
-        : event.target === upperRangeInput
-          ? "upper"
-          : null;
-      const startedOnThumb = thumbHandle !== null;
-      const previousThumbPointerDown = lastThumbPointerDown;
-      if (
-        startedOnThumb
-        && previousThumbPointerDown
-        && event.timeStamp - previousThumbPointerDown.timeStamp <= 500
-        && Math.abs(event.clientX - previousThumbPointerDown.clientX) <= 4
-        && Math.abs(event.clientY - previousThumbPointerDown.clientY) <= 4
-      ) {
-        lastThumbPointerDown = null;
-        activeRangePointerId = null;
-        activeRangeHandle = null;
-        const resetInput = previousThumbPointerDown.handle === "lower"
-          ? lowerRangeInput
-          : upperRangeInput;
-        resetInput.focus({ preventScroll: true });
-        event.preventDefault();
-        lastHandledThumbDoubleClick = {
-          handle: previousThumbPointerDown.handle,
-          timeStamp: event.timeStamp,
-          clientX: event.clientX,
-          clientY: event.clientY,
-        };
-        effects.onRangeReset(previousThumbPointerDown.handle);
-        return;
-      }
-      const lowerDistance = Math.abs(
-        event.clientX - valueToX(lowerRangeInput.value),
-      );
-      const upperDistance = Math.abs(
-        event.clientX - valueToX(upperRangeInput.value),
-      );
-      if (Math.abs(lowerDistance - upperDistance) < 0.5) {
-        activeRangeHandle = lastPointerHandle === "lower" ? "upper" : "lower";
-      } else {
-        activeRangeHandle = lowerDistance < upperDistance ? "lower" : "upper";
-      }
-      lastPointerHandle = activeRangeHandle;
-      lastThumbPointerDown = startedOnThumb
-        ? {
-            handle: activeRangeHandle,
-            timeStamp: event.timeStamp,
-            clientX: event.clientX,
-            clientY: event.clientY,
-          }
-        : null;
-      activeRangePointerId = event.pointerId;
-      const input = activeRangeHandle === "lower" ? lowerRangeInput : upperRangeInput;
-      input.focus({ preventScroll: true });
-      rangeSlider.setPointerCapture(event.pointerId);
-      event.preventDefault();
-      if (!startedOnThumb) {
-        updatePointerRange(event.clientX);
-      }
-    }, true);
-    rangeSlider?.addEventListener("pointermove", (event) => {
-      if (event.pointerId !== activeRangePointerId) {
-        return;
-      }
-      if (
-        lastThumbPointerDown
-        && (
-          Math.abs(event.clientX - lastThumbPointerDown.clientX) > 4
-          || Math.abs(event.clientY - lastThumbPointerDown.clientY) > 4
-        )
-      ) {
-        lastThumbPointerDown = null;
-      }
-      event.preventDefault();
-      updatePointerRange(event.clientX);
-    });
-    const finishRangePointer = (event) => {
-      if (event.pointerId !== activeRangePointerId) {
-        return;
-      }
-      if (rangeSlider?.hasPointerCapture(event.pointerId)) {
-        rangeSlider.releasePointerCapture(event.pointerId);
-      }
-      activeRangePointerId = null;
-      activeRangeHandle = null;
-    };
-    rangeSlider?.addEventListener("pointerup", finishRangePointer);
-    rangeSlider?.addEventListener("pointercancel", (event) => {
-      if (event.pointerId === activeRangePointerId) {
-        lastThumbPointerDown = null;
-      }
-      finishRangePointer(event);
-    });
-    rangeSlider?.addEventListener("lostpointercapture", (event) => {
-      if (event.pointerId === activeRangePointerId) {
-        activeRangePointerId = null;
-        activeRangeHandle = null;
-        lastThumbPointerDown = null;
-      }
-    });
-
-    for (const [handle, inputId] of [
-      ["lower", "background-range-lower-input"],
-      ["upper", "background-range-upper-input"],
-    ]) {
-      const input = /** @type {HTMLInputElement | null} */ (
-        document.getElementById(inputId)
-      );
-      input?.addEventListener("input", () => {
-        effects.onRangeInput(
-          /** @type {"lower" | "upper"} */ (handle),
-          input.value,
-        );
-      });
-      input?.addEventListener("dblclick", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (
-          lastHandledThumbDoubleClick
-          && event.timeStamp - lastHandledThumbDoubleClick.timeStamp <= 1000
-          && Math.abs(event.clientX - lastHandledThumbDoubleClick.clientX) <= 4
-          && Math.abs(event.clientY - lastHandledThumbDoubleClick.clientY) <= 4
-        ) {
-          lastHandledThumbDoubleClick = null;
-          return;
-        }
-        lastThumbPointerDown = null;
-        effects.onRangeReset(
-          /** @type {"lower" | "upper"} */ (handle),
-        );
-      });
-      input?.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter") {
-          return;
-        }
-        event.preventDefault();
-        lastThumbPointerDown = null;
-        effects.onRangeReset(
-          /** @type {"lower" | "upper"} */ (handle),
-        );
+    if (rangeSlider && lowerRangeInput && upperRangeInput) {
+      wireDualRangeController({
+        container: rangeSlider,
+        lowerInput: lowerRangeInput,
+        upperInput: upperRangeInput,
+        onInput(handle, value) {
+          effects.onRangeInput(handle, value);
+        },
+        onDoubleActivate(handle) {
+          effects.onRangeReset(handle);
+        },
+        onInteractionStart() {
+          effects.onRangeInteractionStart();
+        },
+        onInteractionEnd({ canceled }) {
+          effects.onRangeInteractionEnd({ canceled });
+        },
       });
     }
-    return true;
   }
 
   wire();
   return Object.freeze({
-    closeMenu,
     renderControl,
     renderRange,
   });

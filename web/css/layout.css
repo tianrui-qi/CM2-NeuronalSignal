@@ -1,15 +1,17 @@
 .app-shell {
   position: relative;
-  width: 100vw;
+  width: 100%;
   height: 100vh;
+  height: 100lvh;
+  overflow: hidden;
 }
 
 .fullscreen-background,
 .fullscreen-map {
   position: absolute;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
 }
 
 .fullscreen-background {
@@ -21,8 +23,35 @@
 
 .fullscreen-map {
   z-index: 1;
-  overscroll-behavior: none;
   touch-action: none;
+}
+
+.map-system-gesture-gutter {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  display: none;
+  width: 24px;
+  pointer-events: auto;
+  touch-action: pan-x pinch-zoom;
+  overscroll-behavior-x: auto;
+}
+
+.map-system-gesture-gutter-left {
+  left: 0;
+  width: calc(24px + env(safe-area-inset-left, 0px));
+}
+
+.map-system-gesture-gutter-right {
+  right: 0;
+  width: calc(24px + env(safe-area-inset-right, 0px));
+}
+
+@media (any-pointer: coarse) {
+  .map-system-gesture-gutter {
+    display: block;
+  }
 }
 
 .fullscreen-map .shapelayer path {
@@ -31,7 +60,11 @@
 
 .status-banner {
   position: fixed;
-  top: var(--space-7);
+  top: calc(
+    var(--visual-viewport-offset-top, 0px)
+    + env(safe-area-inset-top, 0px)
+    + var(--space-7)
+  );
   left: var(--space-7);
   z-index: var(--z-status);
   min-height: 36px;
@@ -54,29 +87,95 @@
 
 .overlay-stack {
   position: absolute;
-  top: 0;
-  left: var(--ui-spacing);
-  bottom: 0;
+  top: calc(
+    var(--visual-viewport-offset-top, 0px)
+    + env(safe-area-inset-top, 0px)
+  );
+  left: calc(env(safe-area-inset-left, 0px) + var(--ui-spacing));
+  bottom: calc(
+    var(--visual-viewport-bottom-offset, 0px)
+    + env(safe-area-inset-bottom, 0px)
+  );
   width: var(--overlay-width);
   display: flex;
   flex-direction: column;
   z-index: var(--z-overlay);
   pointer-events: none;
+  transition: width 160ms ease, height 160ms ease;
 }
 
-.overlay-stack.is-resizing {
+.overlay-stack.is-resizing,
+.overlay-stack[data-shell-dragging="true"] {
   user-select: none;
+  transition: none;
 }
 
 .overlay-resizer {
   position: absolute;
   top: 0;
-  right: -7px;
+  right: -8px;
   bottom: 0;
-  width: 14px;
+  width: 16px;
+  border: 0;
   border-radius: var(--radius-pill);
+  outline: 0;
   cursor: ew-resize;
   pointer-events: auto;
+  touch-action: none;
+}
+
+.overlay-resizer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 44px;
+  border-radius: var(--radius-pill);
+  background: var(--border-control);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.overlay-resizer:focus-visible::after {
+  background: var(--accent-mint);
+  opacity: 1;
+}
+
+.responsive-sheet-handle {
+  position: relative;
+  display: none;
+  flex: 0 0 var(--sheet-handle-size);
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 0;
+  height: var(--sheet-handle-size);
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: ns-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.responsive-sheet-grabber {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background:
+    linear-gradient(var(--surface-interactive), var(--surface-interactive)),
+    var(--surface-background);
+  box-shadow: var(--shadow-control);
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.responsive-sheet-handle:focus-visible .responsive-sheet-grabber {
+  background: var(--accent-mint);
+  box-shadow: 0 0 0 3px rgba(122, 210, 190, 0.2);
 }
 
 .glass-panel {
@@ -119,8 +218,11 @@
   display: block;
   overflow-y: auto;
   overflow-x: hidden;
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: pan-y;
   scrollbar-width: none;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .workflow-panel-content {
@@ -129,7 +231,6 @@
   gap: var(--ui-spacing);
   width: 100%;
   margin-block: var(--ui-spacing);
-  pointer-events: auto;
 }
 
 .workflow-state-actions {
@@ -152,13 +253,6 @@
     linear-gradient(var(--surface-interactive), var(--surface-interactive)),
     var(--surface-background);
   box-shadow: var(--shadow-control);
-}
-
-.mini-btn.workflow-state-action:not(:disabled):hover {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    linear-gradient(var(--surface-interactive), var(--surface-interactive)),
-    var(--surface-background);
 }
 
 .mini-btn.workflow-state-action:not(:disabled):active {
@@ -236,12 +330,6 @@
   border-right: 4px solid transparent;
   border-top: 5px solid var(--text-muted);
   transform: rotate(0deg);
-}
-
-.workflow-section-header:hover {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    var(--surface-interactive);
 }
 
 .workflow-section-header:active {

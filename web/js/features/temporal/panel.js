@@ -1,3 +1,6 @@
+import { wireRangeController } from "../../shared/ui/range-controller.js";
+
+
 const TRACE_SOURCE_DESCRIPTIONS = Object.freeze({
   c_bl: "Neuron temporal trace (C)",
   c_bl_plus_yra: "Neuron temporal trace (C) plus the spatially filtered residual signal (YrA)",
@@ -23,6 +26,8 @@ const SEGMENTED_TOGGLE_GROUP_LABELS = Object.freeze({
  * @param {{ document: Document }} dependencies
  */
 export function createTemporalPanel({ document }) {
+  /** @type {Array<{ destroy: () => boolean }>} */
+  let scaleControllers = [];
   /**
    * @param {string} containerId
    * @param {string[]} keys
@@ -88,8 +93,6 @@ export function createTemporalPanel({ document }) {
     onSourceSelect,
     onValueModeSelect,
   }) {
-    // Preserve the update order because DOM observers can distinguish
-    // Heatmap source/value updates from Trace source/value updates.
     renderSegmentedToggle(
       "heatmap-source-toggle",
       sourceKeys,
@@ -180,6 +183,8 @@ export function createTemporalPanel({ document }) {
    *   valueLabel: (value: number) => string,
    *   description: string,
    *   onInput: (value: number) => void,
+   *   onInteractionStart: (modality: "pointer" | "keyboard") => void,
+   *   onInteractionEnd: (options: { modality: "pointer" | "keyboard", canceled: boolean }) => void,
    * }} options
    */
   function renderScaleControl({
@@ -192,6 +197,8 @@ export function createTemporalPanel({ document }) {
     valueLabel,
     description,
     onInput,
+    onInteractionStart,
+    onInteractionEnd,
   }) {
     const control = document.createElement("label");
     control.className = "trace-scale-control";
@@ -234,14 +241,19 @@ export function createTemporalPanel({ document }) {
     };
 
     updateInputPresentation(value);
-    input.addEventListener("input", () => {
-      const nextValue = normalize(Number(input.value));
-      input.value = String(nextValue);
-      updateInputPresentation(nextValue);
-      onInput(nextValue);
+    const controller = wireRangeController({
+      input,
+      onInput(rawValue) {
+        const nextValue = normalize(Number(rawValue));
+        input.value = String(nextValue);
+        updateInputPresentation(nextValue);
+        onInput(nextValue);
+      },
+      onInteractionStart,
+      onInteractionEnd,
     });
     control.append(header, input);
-    return control;
+    return { control, controller };
   }
 
   /**
@@ -267,6 +279,10 @@ export function createTemporalPanel({ document }) {
    *   },
    *   onSpacingInput: (value: number) => void,
    *   onScaleInput: (value: number) => void,
+   *   onSpacingInteractionStart: (modality: "pointer" | "keyboard") => void,
+   *   onScaleInteractionStart: (modality: "pointer" | "keyboard") => void,
+   *   onSpacingInteractionEnd: (options: { modality: "pointer" | "keyboard", canceled: boolean }) => void,
+   *   onScaleInteractionEnd: (options: { modality: "pointer" | "keyboard", canceled: boolean }) => void,
    * }} options
    */
   function renderScaleControls({
@@ -277,29 +293,44 @@ export function createTemporalPanel({ document }) {
     scale,
     onSpacingInput,
     onScaleInput,
+    onSpacingInteractionStart,
+    onScaleInteractionStart,
+    onSpacingInteractionEnd,
+    onScaleInteractionEnd,
   }) {
     const container = document.getElementById("trace-scale-controls");
     if (!container) {
       return;
     }
     container.classList.toggle("hidden", !visible);
+    for (const controller of scaleControllers) {
+      controller.destroy();
+    }
+    scaleControllers = [];
     container.innerHTML = "";
     if (!visible) {
       return;
     }
+    const spacingControl = renderScaleControl({
+      label: "Spacing",
+      value: spacingValue,
+      ...spacing,
+      onInput: onSpacingInput,
+      onInteractionStart: onSpacingInteractionStart,
+      onInteractionEnd: onSpacingInteractionEnd,
+    });
+    const scaleControl = renderScaleControl({
+      label: "Scale",
+      value: scaleValue,
+      ...scale,
+      onInput: onScaleInput,
+      onInteractionStart: onScaleInteractionStart,
+      onInteractionEnd: onScaleInteractionEnd,
+    });
+    scaleControllers = [spacingControl.controller, scaleControl.controller];
     container.append(
-      renderScaleControl({
-        label: "Spacing",
-        value: spacingValue,
-        ...spacing,
-        onInput: onSpacingInput,
-      }),
-      renderScaleControl({
-        label: "Scale",
-        value: scaleValue,
-        ...scale,
-        onInput: onScaleInput,
-      }),
+      spacingControl.control,
+      scaleControl.control,
     );
   }
 

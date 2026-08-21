@@ -1,7 +1,3 @@
-.region-card {
-  gap: var(--ui-spacing);
-}
-
 .region-list {
   display: flex;
   flex-direction: column;
@@ -35,25 +31,12 @@
   font-weight: 700;
 }
 
-.region-row-previewable:hover {
-  border-color: var(--border-hover);
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    var(--surface-interactive);
-}
-
-.region-row-summary {
-  background: var(--surface-interactive);
-  border-color: var(--border-soft);
-}
-
 .region-row-summary .region-row-label {
   font-weight: 700;
 }
 
 .region-row-draft {
   border-style: dashed;
-  color: rgba(247, 241, 231, 0.82);
 }
 
 .region-row-add {
@@ -64,14 +47,6 @@
   color: var(--text-muted);
   cursor: pointer;
   text-align: left;
-}
-
-.region-row-add:hover {
-  border-color: var(--border-hover);
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    transparent;
-  color: var(--text);
 }
 
 .region-row-add:active {
@@ -101,11 +76,25 @@
 
 .region-row-count[data-region-preview-key] {
   display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
   width: auto;
+  border: 0;
   border-radius: var(--radius-sm);
   margin: -2px 0;
   padding: 2px 5px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
   transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.region-row-count[data-region-preview-key]:focus-visible {
+  outline: 2px solid var(--accent-mint);
+  outline-offset: 1px;
 }
 
 .region-row-count-active {
@@ -141,27 +130,20 @@
   background: transparent;
 }
 
-.region-row-icon.mini-btn:hover:not(:disabled) {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    transparent;
+.region-row-icon-visual {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
-.region-row-icon.mini-btn:active:not(:disabled) {
+.region-row-icon.mini-btn:active {
   background:
     linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
     transparent;
 }
 
-.region-row-icon.mini-btn:disabled {
-  cursor: default;
-  opacity: 0.38;
-}
-
-.region-row-delete.mini-btn::before,
-.region-row-delete.mini-btn::after,
-.region-row-cancel.mini-btn::before,
-.region-row-cancel.mini-btn::after {
+.region-row-delete > .region-row-icon-visual::before,
+.region-row-delete > .region-row-icon-visual::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -173,24 +155,52 @@
   transform-origin: center;
 }
 
-.region-row-delete.mini-btn::before,
-.region-row-cancel.mini-btn::before {
+.region-row-delete > .region-row-icon-visual::before {
   transform: translate(-50%, -50%) rotate(45deg);
 }
 
-.region-row-delete.mini-btn::after,
-.region-row-cancel.mini-btn::after {
+.region-row-delete > .region-row-icon-visual::after {
   transform: translate(-50%, -50%) rotate(-45deg);
 }
 
-.region-row-commit.mini-btn::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 48%;
-  width: 9px;
-  height: 5px;
-  border-bottom: 1.6px solid currentColor;
-  border-left: 1.6px solid currentColor;
-  transform: translate(-50%, -50%) rotate(-45deg);
+.region-drawing-toolbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ui-spacing);
+  padding: var(--ui-spacing);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--elevation-overlay);
+  box-shadow: var(--shadow-panel);
+}
+
+.region-drawing-action {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (hover: hover) {
+  .region-row-previewable:hover {
+    border-color: var(--border-hover);
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      var(--surface-interactive);
+  }
+
+  .region-row-add:hover {
+    border-color: var(--border-hover);
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      transparent;
+    color: var(--text);
+  }
+
+  .region-row-icon.mini-btn:hover {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      transparent;
+  }
 }

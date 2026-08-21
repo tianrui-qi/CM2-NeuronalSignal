@@ -3,6 +3,7 @@ import {
   buildHistogram,
   formatMetricValue,
 } from "./model.js";
+import { wireConfirmedBlankTap } from "../../shared/ui/confirmed-tap.js";
 
 
 export const QC_EXPORT_COLORSCALE = [
@@ -155,6 +156,67 @@ export function buildQcExportLayout(
 export function createQualityControlHistogram({ document, renderScheduler }) {
   let renderRevision = 0;
 
+  function getTapInspector() {
+    const stage = document.querySelector(".qc-histogram-stage");
+    if (!stage) {
+      return null;
+    }
+    let inspector = /** @type {HTMLElement | null} */ (
+      stage.querySelector(".qc-histogram-inspector")
+    );
+    if (!inspector) {
+      inspector = document.createElement("div");
+      inspector.className = "qc-histogram-inspector hidden";
+      inspector.setAttribute("role", "status");
+      inspector.setAttribute("aria-live", "polite");
+      stage.appendChild(inspector);
+    }
+    return inspector;
+  }
+
+  function hideTapInspector() {
+    const inspector = document.querySelector(".qc-histogram-inspector");
+    const wasVisible = Boolean(inspector && !inspector.classList.contains("hidden"));
+    inspector?.classList.add("hidden");
+    if (inspector) {
+      inspector.textContent = "";
+    }
+    return wasVisible;
+  }
+
+  /** @param {Cm2PlotElement} plot */
+  function detachTapInspector(plot) {
+    if (plot.__cm2QcTapHandler && typeof plot.removeListener === "function") {
+      plot.removeListener("plotly_click", plot.__cm2QcTapHandler);
+    }
+    plot.__cm2QcTapSession?.destroy();
+    delete plot.__cm2QcTapHandler;
+    delete plot.__cm2QcTapSession;
+  }
+
+  /** @param {Cm2PlotElement} plot */
+  function attachTapInspector(plot) {
+    detachTapInspector(plot);
+    plot.__cm2QcTapHandler = (event) => {
+      plot.__cm2QcTapSession?.claim();
+      const point = event?.points?.[0];
+      const label = point?.customdata?.[0];
+      const count = Number(point?.customdata?.[1] ?? point?.y);
+      const inspector = getTapInspector();
+      if (!inspector || !label || !Number.isFinite(count)) {
+        hideTapInspector();
+        return;
+      }
+      inspector.textContent = `${label}; neurons=${Math.round(count)}`;
+      inspector.classList.remove("hidden");
+    };
+    plot.__cm2QcTapSession = wireConfirmedBlankTap({
+      element: plot,
+      onBlankTap: hideTapInspector,
+    });
+    plot.on("plotly_click", plot.__cm2QcTapHandler);
+  }
+
   function getPlot() {
     return /** @type {Cm2PlotElement | null} */ (
       document.getElementById("blueprint-stats-plot")
@@ -190,6 +252,8 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
       return false;
     }
     plot.classList.add("hidden");
+    hideTapInspector();
+    detachTapInspector(plot);
     onDownloadEnabled(false);
     plotly.purge(plot);
     return true;
@@ -283,6 +347,7 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
         height: 130,
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
+        dragmode: false,
         barmode: "overlay",
         showlegend: false,
         shapes: [],
@@ -311,7 +376,7 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
         },
       },
       {
-        responsive: true,
+        responsive: false,
         displaylogo: false,
         displayModeBar: false,
         doubleClick: false,
@@ -322,6 +387,7 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
       if (revision !== renderRevision || !plot.isConnected) {
         return false;
       }
+      attachTapInspector(plot);
       onDownloadEnabled(true);
       renderScheduler.scheduleDoubleFrame(() => {
         if (
@@ -403,6 +469,11 @@ export function createQualityControlHistogram({ document, renderScheduler }) {
 
   return {
     getPlot,
+    hasPinnedInspector() {
+      const inspector = document.querySelector(".qc-histogram-inspector");
+      return Boolean(inspector && !inspector.classList.contains("hidden"));
+    },
+    dismissPinnedInspector: hideTapInspector,
     clear,
     render,
     exportImage,

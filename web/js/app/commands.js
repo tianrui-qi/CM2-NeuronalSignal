@@ -319,9 +319,16 @@ export function createViewerCommands(store) {
     /** @param {string} section */
     toggleWorkflowSection(section) {
       return store.update("workflow:toggle", (state) => {
+        if (
+          section === "region"
+          && state.regionDraft.active
+          && state.openSections.region
+        ) {
+          return { section, isOpen: true, blocked: true };
+        }
         state.activeWorkflowSection = section;
         state.openSections[section] = !state.openSections[section];
-        return { section, isOpen: state.openSections[section] };
+        return { section, isOpen: state.openSections[section], blocked: false };
       });
     },
 
@@ -437,6 +444,16 @@ export function createViewerCommands(store) {
       return store.update("region:append-draft-point", (state) => {
         state.regionDraft.points.push(point);
         return point;
+      });
+    },
+
+    undoRegionVertex() {
+      return store.update("region:undo-vertex", (state) => {
+        if (!state.regionDraft.active || state.regionDraft.points.length === 0) {
+          return false;
+        }
+        state.regionDraft.points.pop();
+        return true;
       });
     },
 

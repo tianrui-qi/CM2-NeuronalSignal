@@ -11,10 +11,6 @@
   display: none;
 }
 
-.map-neuron-preview.is-rendering {
-  visibility: hidden;
-}
-
 .map-neuron-preview-header {
   display: block;
   min-height: var(--table-header-height);
@@ -31,6 +27,7 @@
 }
 
 .map-neuron-preview-plot {
+  display: block;
   width: 100%;
   min-height: 1px;
   overflow: hidden;
@@ -70,4 +67,77 @@
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.fullscreen-map:focus-visible {
+  outline: 2px solid var(--accent-mint);
+  outline-offset: -3px;
+}
+
+.confirmation-dialog.shortcut-help-dialog {
+  width: min(560px, calc(100vw - 2 * var(--ui-spacing)));
+  max-height: min(
+    calc(100dvh - 2 * var(--ui-spacing)),
+    calc(var(--visual-viewport-height, 100dvh) - 2 * var(--ui-spacing))
+  );
+  overflow: auto;
+}
+
+.shortcut-help-groups {
+  display: grid;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+}
+
+.shortcut-help-group-title {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.shortcut-help-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2) var(--ui-spacing);
+  margin: 0;
+}
+
+.shortcut-help-list dt,
+.shortcut-help-list dd {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.shortcut-help-list dd {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.shortcut-help-actions {
+  bottom: 0;
+  padding-top: var(--space-3);
+  background: var(--elevation-overlay);
+}
+
+@media (hover: none), (pointer: coarse) {
+  .fullscreen-map .modebar {
+    display: none !important;
+  }
+}
+
+html[data-shell-layout="bottom"] .map-neuron-preview {
+  top: calc(
+    var(--visual-viewport-offset-top, 0px)
+    + env(safe-area-inset-top, 0px)
+    + var(--ui-spacing)
+  ) !important;
+  right: calc(env(safe-area-inset-right, 0px) + var(--ui-spacing)) !important;
+  left: calc(env(safe-area-inset-left, 0px) + var(--ui-spacing)) !important;
+  width: auto;
+  max-height: calc(
+    min(100dvh, var(--visual-viewport-height, 100dvh))
+    - var(--sheet-handle-size)
+    - 3 * var(--ui-spacing)
+  );
+  overflow: auto;
 }

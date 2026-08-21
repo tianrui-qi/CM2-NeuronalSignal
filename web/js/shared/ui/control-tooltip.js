@@ -57,6 +57,8 @@ export function createControlTooltip({ document, window }) {
   let hoveredControl = null;
   /** @type {number | null} */
   let showTimer = null;
+  /** @type {string | null} */
+  let recentPointerType = null;
   let started = false;
 
   function ensureTooltip() {
@@ -110,9 +112,20 @@ export function createControlTooltip({ document, window }) {
 
   function moveTooltipToBody() {
     const element = ensureTooltip();
-    element.parentElement?.classList.remove("control-tooltip-host");
+    element.removeAttribute("data-dialog-layer");
     if (element.parentElement !== document.body) {
       document.body.appendChild(element);
+    }
+  }
+
+  /** @param {HTMLElement} control */
+  function moveTooltipToControlLayer(control) {
+    const element = ensureTooltip();
+    const dialog = control.closest("dialog[open]");
+    const host = dialog instanceof HTMLElement ? dialog : document.body;
+    element.toggleAttribute("data-dialog-layer", host !== document.body);
+    if (element.parentElement !== host) {
+      host.appendChild(element);
     }
   }
 
@@ -133,6 +146,49 @@ export function createControlTooltip({ document, window }) {
     const element = ensureTooltip();
     const anchorRect = control.getBoundingClientRect();
     const tooltipRect = element.getBoundingClientRect();
+    const dialog = element.hasAttribute("data-dialog-layer")
+      ? /** @type {HTMLDialogElement | null} */ (control.closest("dialog[open]"))
+      : null;
+    if (dialog) {
+      const dialogRect = dialog.getBoundingClientRect();
+      const visibleLeft = dialog.scrollLeft + VIEWPORT_PADDING_PX;
+      const visibleTop = dialog.scrollTop + VIEWPORT_PADDING_PX;
+      const visibleRight = dialog.scrollLeft + dialog.clientWidth - VIEWPORT_PADDING_PX;
+      const visibleBottom = dialog.scrollTop + dialog.clientHeight - VIEWPORT_PADDING_PX;
+      const centeredLeft = (
+        anchorRect.left
+        - dialogRect.left
+        + dialog.scrollLeft
+        + (anchorRect.width - tooltipRect.width) / 2
+      );
+      const left = Math.min(
+        Math.max(visibleLeft, visibleRight - tooltipRect.width),
+        Math.max(visibleLeft, centeredLeft),
+      );
+      const below = (
+        anchorRect.bottom
+        - dialogRect.top
+        + dialog.scrollTop
+        + ANCHOR_GAP_PX
+      );
+      const above = (
+        anchorRect.top
+        - dialogRect.top
+        + dialog.scrollTop
+        - tooltipRect.height
+        - ANCHOR_GAP_PX
+      );
+      const preferredTop = below + tooltipRect.height <= visibleBottom
+        ? below
+        : above;
+      const top = Math.min(
+        Math.max(visibleTop, visibleBottom - tooltipRect.height),
+        Math.max(visibleTop, preferredTop),
+      );
+      element.style.left = `${Math.round(left)}px`;
+      element.style.top = `${Math.round(top)}px`;
+      return;
+    }
     const viewportWidth = Math.max(0, window.innerWidth);
     const viewportHeight = Math.max(0, window.innerHeight);
     const maxLeft = Math.max(
@@ -146,22 +202,6 @@ export function createControlTooltip({ document, window }) {
     const top = below + tooltipRect.height <= viewportHeight - VIEWPORT_PADDING_PX
       ? below
       : Math.max(VIEWPORT_PADDING_PX, above);
-    const hostDialog = element.parentElement?.matches("dialog[open]")
-      ? /** @type {HTMLDialogElement} */ (element.parentElement)
-      : null;
-    if (hostDialog) {
-      const hostRect = hostDialog.getBoundingClientRect();
-      const hostStyle = window.getComputedStyle(hostDialog);
-      const hostBorderLeft = Number.parseFloat(hostStyle.borderLeftWidth) || 0;
-      const hostBorderTop = Number.parseFloat(hostStyle.borderTopWidth) || 0;
-      element.style.left = `${Math.round(
-        left - hostRect.left - hostBorderLeft,
-      )}px`;
-      element.style.top = `${Math.round(
-        top - hostRect.top - hostBorderTop,
-      )}px`;
-      return;
-    }
     element.style.left = `${Math.round(left)}px`;
     element.style.top = `${Math.round(top)}px`;
   }
@@ -178,13 +218,7 @@ export function createControlTooltip({ document, window }) {
     }
     activeControl = control;
     const element = ensureTooltip();
-    const openDialog = control.closest("dialog[open]");
-    const host = openDialog ?? document.body;
-    if (element.parentElement !== host) {
-      element.parentElement?.classList.remove("control-tooltip-host");
-      host.appendChild(element);
-    }
-    openDialog?.classList.add("control-tooltip-host");
+    moveTooltipToControlLayer(control);
     element.textContent = description;
     element.hidden = false;
     linkDescription(control);
@@ -245,6 +279,9 @@ export function createControlTooltip({ document, window }) {
 
   /** @param {FocusEvent} event */
   function onFocusIn(event) {
+    if (recentPointerType) {
+      return;
+    }
     const control = findControl(event.target);
     if (control) {
       show(control);
@@ -261,10 +298,17 @@ export function createControlTooltip({ document, window }) {
 
   /** @param {KeyboardEvent} event */
   function onKeyDown(event) {
+    recentPointerType = null;
     if (event.key === "Escape") {
       hoveredControl = null;
       hide();
     }
+  }
+
+  /** @param {PointerEvent} event */
+  function onPointerDown(event) {
+    recentPointerType = event.pointerType || "mouse";
+    hide();
   }
 
   function onViewportChange() {
@@ -280,7 +324,7 @@ export function createControlTooltip({ document, window }) {
     ensureTooltip();
     document.addEventListener("pointerover", onPointerOver);
     document.addEventListener("pointerout", onPointerOut);
-    document.addEventListener("pointerdown", hide, true);
+    document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     document.addEventListener("keydown", onKeyDown);
@@ -289,25 +333,5 @@ export function createControlTooltip({ document, window }) {
     return true;
   }
 
-  function dispose() {
-    if (!started) {
-      return false;
-    }
-    started = false;
-    hoveredControl = null;
-    hide();
-    document.removeEventListener("pointerover", onPointerOver);
-    document.removeEventListener("pointerout", onPointerOut);
-    document.removeEventListener("pointerdown", hide, true);
-    document.removeEventListener("focusin", onFocusIn);
-    document.removeEventListener("focusout", onFocusOut);
-    document.removeEventListener("keydown", onKeyDown);
-    document.removeEventListener("scroll", onViewportChange, true);
-    window.removeEventListener("resize", onViewportChange);
-    tooltip?.remove();
-    tooltip = null;
-    return true;
-  }
-
-  return Object.freeze({ dispose, hide, start });
+  return Object.freeze({ start });
 }

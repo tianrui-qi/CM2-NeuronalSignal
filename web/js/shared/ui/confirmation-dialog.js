@@ -80,7 +80,7 @@ export function createConfirmationDialog({ document }) {
 
     const cancelButton = document.createElement("button");
     cancelButton.type = "button";
-    cancelButton.className = "mini-btn confirmation-dialog-cancel";
+    cancelButton.className = "mini-btn";
     cancelButton.textContent = "Cancel";
     cancelButton.setAttribute("aria-label", "Cancel");
     cancelButton.dataset.controlDescription = cancelDescription;
@@ -162,5 +162,5 @@ export function createConfirmationDialog({ document }) {
     return true;
   }
 
-  return Object.freeze({ close, open });
+  return Object.freeze({ open });
 }

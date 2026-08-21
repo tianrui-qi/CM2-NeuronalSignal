@@ -1,7 +1,3 @@
-.background-card {
-  gap: var(--ui-spacing);
-}
-
 .background-toolbar-row {
   display: grid;
   grid-template-columns: var(--plot-action-column-width) minmax(0, 1fr);
@@ -44,12 +40,6 @@
   border-right: 4px solid transparent;
   border-top: 5px solid var(--text-muted);
   transform: translateY(-40%);
-}
-
-.background-select:hover {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    var(--surface-interactive);
 }
 
 .background-select:active {
@@ -103,14 +93,10 @@
   white-space: nowrap;
 }
 
-.background-picker-option:hover,
 .background-picker-option:focus-visible {
   background: var(--state-hover-layer);
-  outline: none;
-}
-
-.background-picker-option:focus-visible {
   box-shadow: inset 0 0 0 2px var(--accent-mint);
+  outline: none;
 }
 
 .background-picker-option:active {
@@ -121,7 +107,6 @@
   background: var(--surface-selected);
 }
 
-.background-picker-option.is-active:hover,
 .background-picker-option.is-active:focus-visible {
   background:
     linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
@@ -135,6 +120,10 @@
 }
 
 .background-range {
+  display: grid;
+  grid-template-rows: 12px var(--slider-layout-height);
+  align-content: start;
+  gap: 0;
   min-width: 0;
   height: var(--control-height);
 }
@@ -167,14 +156,14 @@
 .background-range-slider {
   position: relative;
   width: 100%;
-  height: var(--slider-hit-height);
-  touch-action: none;
+  height: var(--slider-layout-height);
+  touch-action: pan-y;
 }
 
 .background-range-track,
 .background-range-fill {
   position: absolute;
-  top: calc((var(--slider-hit-height) - var(--slider-track-height)) / 2);
+  top: calc((var(--slider-layout-height) - var(--slider-track-height)) / 2);
   height: var(--slider-track-height);
   border-radius: var(--radius-pill);
 }
@@ -192,10 +181,10 @@
 .background-range-input {
   --slider-state-ring: transparent;
   position: absolute;
-  top: 0;
+  top: calc((var(--slider-layout-height) - var(--slider-input-height)) / 2);
   left: 0;
   width: 100%;
-  height: var(--slider-hit-height);
+  height: var(--slider-input-height);
   margin: 0;
   -webkit-appearance: none;
   appearance: none;
@@ -204,14 +193,14 @@
 }
 
 .background-range-input::-webkit-slider-runnable-track {
-  height: var(--slider-hit-height);
+  height: var(--slider-track-height);
   background: transparent;
 }
 
 .background-range-input::-webkit-slider-thumb {
   width: var(--slider-thumb-size);
   height: var(--slider-thumb-size);
-  margin-top: calc((var(--slider-hit-height) - var(--slider-thumb-size)) / 2);
+  margin-top: calc((var(--slider-track-height) - var(--slider-thumb-size)) / 2);
   border: var(--slider-thumb-border-width) solid var(--slider-thumb-border-color);
   border-radius: var(--radius-pill);
   -webkit-appearance: none;
@@ -223,7 +212,7 @@
 }
 
 .background-range-input::-moz-range-track {
-  height: var(--slider-hit-height);
+  height: var(--slider-track-height);
   background: transparent;
 }
 
@@ -236,10 +225,6 @@
   box-shadow: var(--slider-thumb-shadow), 0 0 0 3px var(--slider-state-ring);
   cursor: ew-resize;
   pointer-events: auto;
-}
-
-.background-range-input:hover {
-  --slider-state-ring: var(--slider-hover-ring);
 }
 
 .background-range-input:active {
@@ -275,4 +260,26 @@
 .background-range-input:focus,
 .background-range-input:active {
   z-index: 4;
+}
+
+@media (hover: hover) {
+  .background-select:hover {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      var(--surface-interactive);
+  }
+
+  .background-picker-option:hover {
+    background: var(--state-hover-layer);
+  }
+
+  .background-picker-option.is-active:hover {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      var(--surface-selected);
+  }
+
+  .background-range-input:hover {
+    --slider-state-ring: var(--slider-hover-ring);
+  }
 }

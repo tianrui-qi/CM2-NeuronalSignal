@@ -1,10 +1,20 @@
 .trace-section-body {
-  gap: var(--ui-spacing);
-  padding: var(--ui-spacing);
+  container-name: temporal-controls;
+  container-type: inline-size;
 }
 
-.trace-plot-panel {
-  padding-top: 0;
+.trace-plot-panel,
+.heatmap-plot-panel {
+  position: relative;
+}
+
+#c-trace-plot,
+#c-heatmap-plot,
+#c-trace-plot .svg-container,
+#c-heatmap-plot .svg-container,
+#c-trace-plot .draglayer,
+#c-heatmap-plot .draglayer {
+  touch-action: pan-y !important;
 }
 
 .heatmap-colorbar {
@@ -22,14 +32,13 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  height: var(--control-height);
   min-height: var(--control-height);
   overflow: visible;
 }
 
 .heatmap-colorbar-range {
   display: grid;
-  grid-template-rows: 12px var(--slider-hit-height);
+  grid-template-rows: 12px var(--slider-layout-height);
   align-content: center;
   min-width: 0;
   height: var(--control-height);
@@ -60,10 +69,6 @@
   margin-top: var(--ui-spacing);
 }
 
-.trace-download-row {
-  justify-content: flex-end;
-}
-
 .plot-download-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -87,7 +92,7 @@
 
 .trace-scale-control {
   display: grid;
-  grid-template-rows: 12px var(--slider-hit-height);
+  grid-template-rows: 12px var(--slider-layout-height);
   align-content: center;
   min-width: 0;
   height: var(--control-height);
@@ -115,12 +120,14 @@
   --slider-progress: 0%;
   --slider-state-ring: transparent;
   width: 100%;
-  height: var(--slider-hit-height);
+  height: var(--slider-input-height);
   margin: 0;
+  align-self: center;
   appearance: none;
   -webkit-appearance: none;
   background: transparent;
   cursor: ew-resize;
+  touch-action: pan-y;
 }
 
 .trace-scale-input::-webkit-slider-runnable-track {
@@ -172,14 +179,15 @@
 
 .heatmap-colorbar-control {
   position: relative;
-  height: var(--slider-hit-height);
+  height: var(--slider-layout-height);
+  touch-action: pan-y;
 }
 
 .heatmap-colorbar-track {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc((var(--slider-hit-height) - var(--slider-track-height)) / 2);
+  top: calc((var(--slider-layout-height) - var(--slider-track-height)) / 2);
   height: var(--slider-track-height);
   border: 0;
   border-radius: var(--radius-pill);
@@ -190,9 +198,12 @@
 .heatmap-colorbar-input {
   --slider-state-ring: transparent;
   position: absolute;
-  inset: 0;
+  top: calc((var(--slider-layout-height) - var(--slider-input-height)) / 2);
+  right: 0;
+  bottom: auto;
+  left: 0;
   width: 100%;
-  height: var(--slider-hit-height);
+  height: var(--slider-input-height);
   margin: 0;
   appearance: none;
   -webkit-appearance: none;
@@ -202,14 +213,14 @@
 }
 
 .heatmap-colorbar-input::-webkit-slider-runnable-track {
-  height: var(--slider-hit-height);
+  height: var(--slider-track-height);
   background: transparent;
 }
 
 .heatmap-colorbar-input::-webkit-slider-thumb {
   width: var(--slider-thumb-size);
   height: var(--slider-thumb-size);
-  margin-top: calc((var(--slider-hit-height) - var(--slider-thumb-size)) / 2);
+  margin-top: calc((var(--slider-track-height) - var(--slider-thumb-size)) / 2);
   border: var(--slider-thumb-border-width) solid var(--slider-thumb-border-color);
   border-radius: var(--radius-pill);
   -webkit-appearance: none;
@@ -221,7 +232,7 @@
 }
 
 .heatmap-colorbar-input::-moz-range-track {
-  height: var(--slider-hit-height);
+  height: var(--slider-track-height);
   background: transparent;
 }
 
@@ -234,11 +245,6 @@
   box-shadow: var(--slider-thumb-shadow), 0 0 0 3px var(--slider-state-ring);
   cursor: ew-resize;
   pointer-events: auto;
-}
-
-.trace-scale-input:hover,
-.heatmap-colorbar-input:hover {
-  --slider-state-ring: var(--slider-hover-ring);
 }
 
 .trace-scale-input:active,
@@ -290,9 +296,12 @@
   text-align: right;
 }
 
+.heatmap-colorbar-labels > * {
+  white-space: nowrap;
+}
+
 .heatmap-colorbar-range-label {
   text-align: center;
-  white-space: nowrap;
 }
 
 .mini-btn,
@@ -314,12 +323,6 @@
   line-height: 1;
 }
 
-.mini-btn:not(:disabled):where(:hover) {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    var(--surface-interactive);
-}
-
 .mini-btn:not(:disabled):where(:active) {
   background:
     linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
@@ -327,8 +330,9 @@
 }
 
 .trace-deselect-btn {
-  position: fixed;
+  position: absolute;
   z-index: var(--z-menu);
+  right: var(--ui-spacing);
   width: var(--inline-action-size);
   min-width: var(--inline-action-size);
   height: var(--inline-action-size);
@@ -374,12 +378,6 @@
   border-right: 0;
 }
 
-.trace-source-btn:hover:not(:disabled) {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    var(--surface-interactive);
-}
-
 .trace-source-btn:active:not(:disabled) {
   background:
     linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
@@ -390,22 +388,81 @@
   background: var(--surface-selected);
 }
 
-.trace-source-btn.active:hover:not(:disabled) {
-  background:
-    linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
-    var(--surface-selected);
-}
-
 .trace-source-btn.active:active:not(:disabled) {
   background:
     linear-gradient(var(--state-pressed-layer), var(--state-pressed-layer)),
     var(--surface-selected);
 }
 
-@media (max-width: 520px) {
+.heatmap-tap-inspector {
+  position: absolute;
+  z-index: 5;
+  top: var(--space-2);
+  right: var(--space-2);
+  max-width: calc(100% - 2 * var(--space-2));
+  padding: var(--space-2) var(--ui-spacing);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--elevation-overlay);
+  box-shadow: var(--shadow-control);
+  color: var(--text);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.heatmap-tap-inspector.hidden {
+  display: none;
+}
+
+@media (hover: hover) {
+  .trace-scale-input:hover,
+  .heatmap-colorbar-input:hover {
+    --slider-state-ring: var(--slider-hover-ring);
+  }
+
+  .mini-btn:not(:disabled):hover {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      var(--surface-interactive);
+  }
+
+  .trace-source-btn:hover:not(:disabled) {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      var(--surface-interactive);
+  }
+
+  .trace-source-btn.active:hover:not(:disabled) {
+    background:
+      linear-gradient(var(--state-hover-layer), var(--state-hover-layer)),
+      var(--surface-selected);
+  }
+}
+
+@container temporal-controls (max-width: 275px) {
   .temporal-toggle-row {
     grid-template-columns: minmax(0, 1fr);
     height: calc(var(--control-height) + var(--control-height) + var(--ui-spacing));
     min-height: calc(var(--control-height) + var(--control-height) + var(--ui-spacing));
+  }
+
+  .heatmap-download-row,
+  .trace-download-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .heatmap-download-row > .heatmap-colorbar,
+  .trace-download-row > .trace-scale-controls {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .heatmap-download-row > .plot-download-actions,
+  .trace-download-row > .plot-download-actions {
+    align-self: flex-end;
+    margin-left: 0;
   }
 }

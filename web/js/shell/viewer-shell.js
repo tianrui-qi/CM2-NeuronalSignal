@@ -3,25 +3,26 @@ import {
   createDefaultOpenSections,
 } from "../app/viewer-store.js";
 import { createOverlayResizer } from "./overlay-resizer.js";
+import { createResponsiveShell } from "./responsive-shell.js";
 import { createWorkflowPanel } from "./workflow-panel.js";
 
 const REQUIRED_EFFECT_PORTS = [
   "persistUiState",
   "renderSections",
+  "renderChrome",
   "requestPanelResize",
   "onViewportChanged",
 ];
 
 /**
  * Create the viewer Shell facade. It owns workflow chrome, navigation and
- * overlay interactions while all feature rendering stays behind four narrow
- * effect ports.
+ * overlay interactions while all feature rendering stays behind narrow effect
+ * ports.
  *
  * @param {{
  *   store: { getSnapshot: () => Record<string, any> },
  *   commands: {
- *     activateWorkflowSection: (section: string) => unknown,
- *     toggleWorkflowSection: (section: string) => unknown,
+ *     toggleWorkflowSection: (section: string) => { blocked?: boolean } | null | undefined,
  *     setActiveWorkflowSection: (section: string) => unknown,
  *     setOverlayWidth: (width: number | null) => unknown,
  *   },
@@ -40,13 +41,7 @@ export function createViewerShell({
   ResizeObserver: ResizeObserverConstructor = globalThis.ResizeObserver,
 }) {
   const sectionIds = WORKFLOW_SECTIONS;
-  /** @type {null | {
-   *   persistUiState: () => void,
-   *   renderSections: (options: { includeMap: boolean, includePlots: boolean }) => void,
-   *   requestPanelResize: (options?: { refreshTemporal?: boolean }) => void,
-   *   onViewportChanged: (viewportKey: string) => void,
-   * }} */
-  let installedEffects = null;
+  let wired = false;
 
   /**
    * @param {unknown} section
@@ -96,18 +91,23 @@ export function createViewerShell({
     window: windowRef,
     ResizeObserver: ResizeObserverConstructor,
   });
+  const responsiveShell = createResponsiveShell({
+    document: documentRef,
+    window: windowRef,
+  });
 
   /**
    * @param {{
    *   persistUiState: () => void,
    *   renderSections: (options: { includeMap: boolean, includePlots: boolean }) => void,
+   *   renderChrome: () => unknown,
    *   requestPanelResize: (options?: { refreshTemporal?: boolean }) => void,
    *   onViewportChanged: (viewportKey: string) => void,
    * }} effects
    * @returns {boolean}
    */
   function wire(effects) {
-    if (installedEffects) {
+    if (wired) {
       return false;
     }
     for (const port of REQUIRED_EFFECT_PORTS) {
@@ -116,14 +116,14 @@ export function createViewerShell({
       }
     }
 
-    installedEffects = effects;
+    wired = true;
     workflowPanel.wire(effects);
+    responsiveShell.wire(effects);
     overlayResizer.wire(effects);
     return true;
   }
 
   return {
-    normalizeSection,
     normalizeOpenSections,
     normalizeOverlayWidth: overlayResizer.normalizeOverlayWidth,
     renderChrome: workflowPanel.renderChrome,

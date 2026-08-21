@@ -1,6 +1,10 @@
 .confirmation-dialog {
   width: min(360px, calc(100vw - 36px));
   max-width: none;
+  max-height: min(
+    calc(100dvh - 36px),
+    calc(var(--visual-viewport-height, 100dvh) - 36px)
+  );
   padding: var(--space-6);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -8,6 +12,17 @@
   color: var(--text);
   box-shadow: var(--shadow-panel);
   backdrop-filter: blur(18px) saturate(135%);
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+html[data-visual-viewport-constrained] .confirmation-dialog[open] {
+  top: calc(var(--visual-viewport-offset-top, 0px) + var(--ui-spacing));
+  bottom: auto;
+  max-height: calc(var(--visual-viewport-height) - 2 * var(--ui-spacing));
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 .confirmation-dialog::backdrop {
@@ -60,11 +75,20 @@
 }
 
 .confirmation-dialog-actions {
+  position: sticky;
+  bottom: calc(-1 * var(--space-6));
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: var(--ui-spacing);
   margin-top: var(--space-6);
+  padding: var(--space-3) 0 var(--space-6);
+  background: linear-gradient(
+    180deg,
+    rgba(23, 22, 20, 0),
+    var(--elevation-overlay) var(--space-3)
+  );
 }
 
 .confirmation-dialog-confirm {
@@ -72,7 +96,6 @@
   background: rgba(154, 55, 45, 0.7);
 }
 
-.confirmation-dialog-confirm:hover,
 .confirmation-dialog-confirm:focus-visible,
 .confirmation-dialog-confirm:active {
   border-color: rgba(255, 164, 151, 0.72);
@@ -82,4 +105,45 @@
 .confirmation-dialog :where(button, input):focus-visible {
   outline: 2px solid var(--accent-mint);
   outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .confirmation-dialog-confirm:hover {
+    border-color: rgba(255, 164, 151, 0.72);
+    background: rgba(178, 64, 52, 0.86);
+  }
+}
+
+@media (max-width: 699px) {
+  .confirmation-dialog {
+    width: calc(
+      100vw
+      - env(safe-area-inset-left, 0px)
+      - env(safe-area-inset-right, 0px)
+      - 2 * var(--ui-spacing)
+    );
+    max-height: min(
+      calc(
+        100dvh
+        - env(safe-area-inset-top, 0px)
+        - env(safe-area-inset-bottom, 0px)
+        - 2 * var(--ui-spacing)
+      ),
+      calc(var(--visual-viewport-height, 100dvh) - 2 * var(--ui-spacing))
+    );
+    padding: var(--space-5);
+  }
+
+  .roi-box-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .confirmation-dialog-actions {
+    bottom: calc(-1 * var(--space-5));
+    padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .confirmation-dialog-actions .mini-btn {
+    flex: 1 1 0;
+  }
 }
