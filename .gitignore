@@ -1,6 +1,7 @@
 /data/*
 !/data/serve/
 !/data/serve/**
+/agent/ # codex chat history .md
 
 # temp folder and files
 **/temp/
@@ -11,7 +12,7 @@
 /outputs/
 /multirun/
 
-# Sites deployment output
+# OpenAI Sites 
 /site/node_modules/
 /site/public/
 /site/dist/

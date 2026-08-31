@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - caiman
+  - caiman=1.13
   - hydra-core=1.3
   - plotly
   - flask
